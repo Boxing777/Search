@@ -1,0 +1,205 @@
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+from matplotlib.lines import Line2D
+import numpy as np
+import math
+
+# --- 解決中文亂碼問題 ---
+plt.rcParams['font.sans-serif'] = ['Microsoft JhengHei'] 
+plt.rcParams['axes.unicode_minus'] = False
+
+# --- 全域變數與參數設定 ---
+ALL_DRAGGABLE_OBJECTS = []
+SNAP_RADIUS = 50
+STATIC_NODES_COORDS = [
+    (476.5,1729.0),(324.7,1421.1),(601.7,1318.5),(312.3,1085.3),(551.9,1032.2),
+    (1704.2,1713.8),(1399.9,1699.0),(1059.0,1515.2),(762.0,1528.9),(1639.1,1374.9),
+    (1301.7,1324.9),(1658.0,1060.0),(1339.4,940.3),(1046.8,778.6),(792.8,804.1),
+    (439.6,764.1),(253.3,755.8),(1743.0,725.2),(1509.8,626.8),(1767.3,411.3),
+    (1441.5,335.5),(1110.1,483.7),(820.2,497.8),(563.8,477.1),(275.6,381.5)
+]
+BS_COORDS = (1000, 1000)
+
+# --- 【BUG 修復】 ---
+def get_all_snap_targets(exclude_object=None):
+    """獲取地圖上所有可吸附的錨點座標"""
+    targets = [BS_COORDS] + STATIC_NODES_COORDS
+    for obj in ALL_DRAGGABLE_OBJECTS:
+        if obj is exclude_object: continue
+        if isinstance(obj, DraggablePoint):
+            # 兼容 numpy array 和 list 兩種情況
+            x_data, y_data = obj.artist.get_data()
+            # 直接從數據中提取第一個 (也是唯一一個) 點的座標
+            targets.append((x_data[0], y_data[0]))
+    return targets
+
+def find_snap_target(x, y, targets):
+    """在指定半徑內尋找最近的吸附目標"""
+    min_dist = float('inf')
+    snap_pos = None
+    for tx, ty in targets:
+        dist = math.sqrt((x - tx)**2 + (y - ty)**2)
+        if dist < SNAP_RADIUS and dist < min_dist:
+            min_dist = dist
+            snap_pos = (tx, ty)
+    return snap_pos
+
+class DraggablePoint:
+    def __init__(self, ax, x, y, size=4, color='yellow'):
+        self.ax = ax
+        # 初始創建時使用列表，保持數據類型一致性
+        self.artist, = ax.plot([x], [y], 'o', color=color, markersize=size, 
+                               markeredgecolor='black', markeredgewidth=0.5,
+                               zorder=10, picker=True, pickradius=10)
+        self.is_dragging = False
+        self.connect()
+
+    def connect(self):
+        self.cid_press = self.artist.figure.canvas.mpl_connect('button_press_event', self.on_press)
+        self.cid_motion = self.artist.figure.canvas.mpl_connect('motion_notify_event', self.on_motion)
+        self.cid_release = self.artist.figure.canvas.mpl_connect('button_release_event', self.on_release)
+
+    def on_press(self, event):
+        if event.inaxes != self.artist.axes: return
+        contains, _ = self.artist.contains(event)
+        if not contains: return
+        
+        if event.button == 3: # 右鍵刪除
+            self.delete()
+            return
+        
+        self.is_dragging = True
+
+    def on_motion(self, event):
+        if not self.is_dragging or event.inaxes is None: return
+        
+        x, y = event.xdata, event.ydata
+        targets = get_all_snap_targets(exclude_object=self)
+        snap_pos = find_snap_target(x, y, targets)
+        if snap_pos:
+            x, y = snap_pos
+
+        self.artist.set_data([x], [y])
+        self.artist.figure.canvas.draw_idle()
+
+    def on_release(self, event):
+        if not self.is_dragging: return
+        self.is_dragging = False
+        self.on_motion(event) # 確保最終位置被吸附
+
+    def delete(self):
+        self.artist.remove()
+        self.artist.figure.canvas.mpl_disconnect(self.cid_press)
+        self.artist.figure.canvas.mpl_disconnect(self.cid_motion)
+        self.artist.figure.canvas.mpl_disconnect(self.cid_release)
+        if self in ALL_DRAGGABLE_OBJECTS:
+            ALL_DRAGGABLE_OBJECTS.remove(self)
+        self.artist.figure.canvas.draw_idle()
+
+# DraggableLine, ObjectFactory, draw_static_scenario_map, draw_toolbox, __main__
+# (以下所有程式碼保持不變，為節省篇幅省略，請直接複製貼上即可)
+class DraggableLine:
+    def __init__(self, ax, p1, p2, color='red', linewidth=3):
+        self.ax = ax; self.p1 = list(p1); self.p2 = list(p2)
+        self.line = Line2D([self.p1[0], self.p2[0]], [self.p1[1], self.p2[1]], color=color, linewidth=linewidth, zorder=9, picker=True, pickradius=5)
+        self.handle1, = ax.plot(self.p1[0], self.p1[1], 's', markersize=0, zorder=10, picker=True, pickradius=10)
+        self.handle2, = ax.plot(self.p2[0], self.p2[1], 's', markersize=0, zorder=10, picker=True, pickradius=10)
+        ax.add_line(self.line)
+        self.drag_target = None; self.press_data = None
+        self.connect()
+    def connect(self):
+        self.cid_press = self.line.figure.canvas.mpl_connect('button_press_event', self.on_press)
+        self.cid_motion = self.line.figure.canvas.mpl_connect('motion_notify_event', self.on_motion)
+        self.cid_release = self.line.figure.canvas.mpl_connect('button_release_event', self.on_release)
+    def on_press(self, event):
+        if event.inaxes != self.ax: return
+        contains_h1, _ = self.handle1.contains(event); contains_h2, _ = self.handle2.contains(event); contains_line, _ = self.line.contains(event)
+        if event.button == 3 and (contains_h1 or contains_h2 or contains_line):
+            self.delete(); return
+        if contains_h1: self.drag_target = 'handle1'
+        elif contains_h2: self.drag_target = 'handle2'
+        elif contains_line: self.drag_target = 'line'
+        else: return
+        self.press_data = (event.xdata, event.ydata, self.p1[:], self.p2[:])
+    def on_motion(self, event):
+        if self.drag_target is None or event.inaxes is None: return
+        x, y, p1_orig, p2_orig = self.press_data
+        dx = event.xdata - x; dy = event.ydata - y
+        targets = get_all_snap_targets(exclude_object=self)
+        if self.drag_target == 'handle1':
+            snap_pos = find_snap_target(event.xdata, event.ydata, targets)
+            self.p1 = snap_pos if snap_pos else [event.xdata, event.ydata]
+        elif self.drag_target == 'handle2':
+            snap_pos = find_snap_target(event.xdata, event.ydata, targets)
+            self.p2 = snap_pos if snap_pos else [event.xdata, event.ydata]
+        elif self.drag_target == 'line':
+            self.p1 = [p1_orig[0] + dx, p1_orig[1] + dy]
+            self.p2 = [p2_orig[0] + dx, p2_orig[1] + dy]
+        self.update_artists()
+    def on_release(self, event):
+        if self.drag_target is None: return
+        self.on_motion(event)
+        self.drag_target = None; self.press_data = None
+    def delete(self):
+        self.line.remove(); self.handle1.remove(); self.handle2.remove()
+        self.line.figure.canvas.mpl_disconnect(self.cid_press)
+        self.line.figure.canvas.mpl_disconnect(self.cid_motion)
+        self.line.figure.canvas.mpl_disconnect(self.cid_release)
+        if self in ALL_DRAGGABLE_OBJECTS: ALL_DRAGGABLE_OBJECTS.remove(self)
+        self.line.figure.canvas.draw_idle()
+    def update_artists(self):
+        self.line.set_data([self.p1[0], self.p2[0]], [self.p1[1], self.p2[1]])
+        self.handle1.set_data([self.p1[0]], [self.p1[1]])
+        self.handle2.set_data([self.p2[0]], [self.p2[1]])
+        self.line.figure.canvas.draw_idle()
+class ObjectFactory:
+    def __init__(self, fig, main_ax, toolbox_ax):
+        self.fig=fig; self.main_ax=main_ax; self.toolbox_ax=toolbox_ax; self.connect()
+    def connect(self):
+        self.cid_press = self.fig.canvas.mpl_connect('button_press_event', self.on_press)
+    def on_press(self, event):
+        if event.inaxes != self.toolbox_ax: return
+        for template in TOOLBOX_TEMPLATES:
+            contains, _ = template['artist'].contains(event)
+            if contains:
+                obj_type, color = template['type'], template['color']
+                if obj_type == 'point':
+                    obj = DraggablePoint(self.main_ax, 100, 100, color=color)
+                    obj.is_dragging = True
+                elif obj_type == 'line':
+                    obj = DraggableLine(self.main_ax, (80, 100), (120, 100), color=color)
+                    obj.drag_target = 'line'
+                    obj.press_data = (100, 100, obj.p1[:], obj.p2[:])
+                ALL_DRAGGABLE_OBJECTS.append(obj)
+                self.fig.canvas.draw_idle(); break
+def draw_static_scenario_map(ax):
+    AREA_WIDTH, AREA_HEIGHT = 2000, 2000; COMM_RADIUS = 200; BS_SIZE = 100
+    node_x_coords, node_y_coords = zip(*STATIC_NODES_COORDS)
+    bs_bottom_left = (BS_COORDS[0] - BS_SIZE / 2, BS_COORDS[1] - BS_SIZE / 2)
+    base_station_patch = patches.Rectangle(bs_bottom_left, BS_SIZE, BS_SIZE, facecolor='green', edgecolor='black', linewidth=1.5, label='基地台 (BS)', zorder=2); ax.add_patch(base_station_patch)
+    ax.plot(node_x_coords, node_y_coords, 'ko', markersize=5, label='地面裝置', zorder=3)
+    for x, y in STATIC_NODES_COORDS:
+        ax.add_patch(patches.Circle((x, y), COMM_RADIUS, linestyle='--', edgecolor='gray', facecolor='lightgray', alpha=0.4, zorder=1))
+    ax.set_xlim(0, AREA_WIDTH); ax.set_ylim(0, AREA_HEIGHT); ax.set_aspect('equal', adjustable='box')
+    ax.set_title('互動式路徑規劃演示 (右鍵刪除, 端點吸附)'); ax.set_xlabel('X 座標 (公尺)'); ax.set_ylabel('Y 座標 (公尺)')
+    ax.grid(True, linestyle=':', alpha=0.6)
+    ax.plot([], [], '--', color='gray', label=f'通訊範圍 (半徑={COMM_RADIUS}m)')
+def draw_toolbox(ax):
+    ax.set_facecolor('whitesmoke'); ax.spines[:].set_visible(False); ax.set_xticks([]); ax.set_yticks([]); ax.set_xlim(0, 1); ax.set_ylim(0, 1)
+    ax.text(0.5, 0.9, '工具箱', ha='center', fontsize=12)
+    global TOOLBOX_TEMPLATES; TOOLBOX_TEMPLATES = []
+    point_artist, = ax.plot(0.3, 0.8, 'o', color='yellow', markeredgecolor='black', markeredgewidth=0.5, markersize=10, picker=True, pickradius=15)
+    ax.text(0.5, 0.8, '拖曳點', va='center', ha='left'); TOOLBOX_TEMPLATES.append({'artist': point_artist, 'type': 'point', 'color': 'yellow'})
+    line_artist_red = Line2D([0.2, 0.4], [0.65, 0.65], color='red', linewidth=2, picker=True, pickradius=15); ax.add_line(line_artist_red)
+    ax.text(0.5, 0.65, '紅色路徑', va='center', ha='left'); TOOLBOX_TEMPLATES.append({'artist': line_artist_red, 'type': 'line', 'color': 'red'})
+    line_artist_blue = Line2D([0.2, 0.4], [0.45, 0.45], color='blue', linewidth=2, picker=True, pickradius=15); ax.add_line(line_artist_blue)
+    ax.text(0.5, 0.45, '藍色路徑', va='center', ha='left'); TOOLBOX_TEMPLATES.append({'artist': line_artist_blue, 'type': 'line', 'color': 'blue'})
+    line_artist_black = Line2D([0.2, 0.4], [0.25, 0.25], color='black', linewidth=2, picker=True, pickradius=15); ax.add_line(line_artist_black)
+    ax.text(0.5, 0.25, '黑色路徑', va='center', ha='left'); TOOLBOX_TEMPLATES.append({'artist': line_artist_black, 'type': 'line', 'color': 'black'})
+if __name__ == '__main__':
+    fig = plt.figure(figsize=(12, 10))
+    ax_main = fig.add_axes([0.08, 0.1, 0.7, 0.8]); ax_toolbox = fig.add_axes([0.8, 0.6, 0.18, 0.3])
+    draw_static_scenario_map(ax_main); draw_toolbox(ax_toolbox)
+    factory = ObjectFactory(fig, ax_main, ax_toolbox)
+    handles, labels = ax_main.get_legend_handles_labels(); fig.legend(handles, labels, loc='upper left', bbox_to_anchor=(0.08, 0.9))
+    plt.show()
