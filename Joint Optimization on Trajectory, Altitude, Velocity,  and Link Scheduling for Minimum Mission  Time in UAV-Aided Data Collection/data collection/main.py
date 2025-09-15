@@ -23,7 +23,7 @@ def main():
     # --- Step 3: Velocity and Link Scheduling ---
     min_mission_time = solve_velocity_and_scheduling(final_trajectory, gu_locations, max_d_h)
 
-    # --- Final Results ---
+    # --- Final Results --
     print("\n--- Simulation Finished ---")
     print(f"Optimal Altitude: {optimal_h:.2f} m")
     print(f"Max Transmission Radius: {max_d_h:.2f} m")
