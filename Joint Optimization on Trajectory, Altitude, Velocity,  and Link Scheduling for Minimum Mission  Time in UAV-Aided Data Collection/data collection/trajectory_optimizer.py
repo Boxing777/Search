@@ -1,7 +1,8 @@
-# trajectory_optimizer.py
+# trajectory_optimizer.py (Improved Version)
 import numpy as np
 from scipy.optimize import minimize
 from python_tsp.heuristics import solve_tsp_simulated_annealing
+from scipy.spatial.distance import pdist, squareform
 from config import START_POS, END_POS
 
 def solve_tsp_for_order(start_point, points):
@@ -12,26 +13,18 @@ def solve_tsp_for_order(start_point, points):
     all_points = np.vstack([start_point, points, END_POS])
     
     num_points = len(all_points)
-    dist_matrix = np.zeros((num_points, num_points))
-    for i in range(num_points):
-        for j in range(num_points):
-            dist_matrix[i, j] = np.linalg.norm(all_points[i] - all_points[j])
+    dist_matrix = np.linalg.norm(all_points[:, np.newaxis, :] - all_points[np.newaxis, :, :], axis=2)
 
-    # Trick for open TSP: create a dummy node that connects start and end
-    # A simpler way: force the path to be S -> ... -> E
-    # Prevent returning to start (0) and leaving end (num_points - 1)
-    dist_matrix[:, 0] = 1e9 # High cost to return to start
-    dist_matrix[num_points-1, :] = 1e9 # High cost to leave end
-    dist_matrix[num_points-1, 0] = 0 # Except allow tour to close from end to start for solver
+    dist_matrix[:, 0] = 1e9
+    dist_matrix[num_points-1, :] = 1e9
+    dist_matrix[num_points-1, 0] = 0
 
     permutation, _ = solve_tsp_simulated_annealing(dist_matrix, x0=list(range(num_points)))
     
     start_idx_in_perm = permutation.index(0)
     
-    # Reorder the permutation to start with 0
     ordered_perm = permutation[start_idx_in_perm:] + permutation[:start_idx_in_perm]
     
-    # Exclude start (0) and end (num_points-1) and map back to original indices
     gu_order_indices = [p - 1 for p in ordered_perm if p != 0 and p != (num_points - 1)]
     return gu_order_indices
 
@@ -60,8 +53,6 @@ def optimize_waypoints(segment_start_pos, gu_locations_ordered, d_h):
         total_length += np.linalg.norm(END_POS - waypoints[-1])
         return total_length
 
-    # *** MAJOR FIX HERE ***
-    # Use default arguments in lambda to capture the value of loop variables correctly.
     constraints = []
     for i in range(num_gus):
         gu_loc = gu_locations_ordered[i]
@@ -76,20 +67,24 @@ def optimize_waypoints(segment_start_pos, gu_locations_ordered, d_h):
         
     initial_guess = np.repeat(gu_locations_ordered, 2, axis=0).flatten()
 
-    result = minimize(objective_func, initial_guess, method='SLSQP', constraints=constraints, options={'maxiter': 200})
+    # *** MODIFICATION: Increased maxiter for better convergence ***
+    result = minimize(objective_func, initial_guess, method='SLSQP', constraints=constraints, options={'maxiter': 1000})
     
+    # *** MODIFICATION: Added fallback for non-convergence ***
     if not result.success:
-        print("  Warning: Waypoint optimization did not converge.")
+        print("  Warning: Waypoint optimization did not converge. Using initial guess as fallback.")
+        waypoints = initial_guess.reshape(-1, 2)
+        final_cost = objective_func(initial_guess)
+    else:
+        waypoints = result.x.reshape(-1, 2)
+        final_cost = result.fun
 
-    waypoints = result.x.reshape(-1, 2)
-    
     full_trajectory_segment = [segment_start_pos]
-    for i in range(num_gus):
-        full_trajectory_segment.append(waypoints[2*i])
-        full_trajectory_segment.append(waypoints[2*i+1])
+    full_trajectory_segment.extend(waypoints)
     full_trajectory_segment.append(END_POS)
     
-    return np.array(full_trajectory_segment), result.fun
+    return np.array(full_trajectory_segment), final_cost
+
 
 def stoa_algorithm(gu_locations, d_h):
     """Implements the Segment-based Trajectory Optimization Algorithm (STOA)."""
@@ -108,21 +103,18 @@ def stoa_algorithm(gu_locations, d_h):
         order_in_remaining = solve_tsp_for_order(current_pos, remaining_locs)
         ordered_gus_locs = remaining_locs[order_in_remaining]
         
-        # *** MAJOR FIX HERE ***
-        # Optimize segment starting from the current position
         segment_trajectory, _ = optimize_waypoints(current_pos, ordered_gus_locs, d_h)
         
-        first_segment_path = segment_trajectory[0:3] # current_pos, S_o1, E_o1
+        first_segment_path = segment_trajectory[0:3] 
         
         covered_original_indices = set()
         for i, original_idx in enumerate(remaining_indices):
             gu_loc = remaining_locs[i]
-            p1, p2 = first_segment_path[1], first_segment_path[2] # The S_o1 -> E_o1 line
+            p1, p2 = first_segment_path[1], first_segment_path[2]
             
-            # Check if this GU's circle intersects with the S_o1 -> E_o1 segment
-            d = np.linalg.norm(p2 - p1)
-            if d > 1e-6:
-                t = np.dot(gu_loc - p1, p2 - p1) / d**2
+            d_sq = np.sum((p2-p1)**2)
+            if d_sq > 1e-9:
+                t = np.dot(gu_loc - p1, p2 - p1) / d_sq
                 t = np.clip(t, 0, 1)
                 closest_point = p1 + t * (p2 - p1)
                 dist_to_segment = np.linalg.norm(gu_loc - closest_point)
@@ -134,16 +126,140 @@ def stoa_algorithm(gu_locations, d_h):
             first_gu_original_idx = remaining_indices[order_in_remaining[0]]
             covered_original_indices.add(first_gu_original_idx)
 
-        final_waypoints.extend(first_segment_path[1:3]) # Add S_o1 and E_o1
+        final_waypoints.extend(first_segment_path[1:3])
         current_pos = first_segment_path[2]
         
         for idx in covered_original_indices:
             remaining_gus_map.pop(idx)
 
-    final_waypoints.append(END_POS)
+    # *** MODIFICATION: Simplified final path construction ***
     final_trajectory = np.array(final_waypoints)
+    # Check if the path needs to connect to the final END_POS
+    if np.linalg.norm(final_trajectory[-1] - END_POS) > 1:
+        # This case handles if the last GU served was far from the end
+        last_leg, _ = optimize_waypoints(final_trajectory[-1], np.array([]), d_h)
+        final_trajectory = np.vstack([final_trajectory, last_leg[1:]])
     
     total_length = np.sum(np.linalg.norm(final_trajectory[1:] - final_trajectory[:-1], axis=1))
     print(f"STOA finished. Final trajectory length: {total_length:.2f} m")
 
     return final_trajectory, total_length
+
+
+def optimize_gtoa_waypoints(segment_start_pos, ordered_vghs_with_groups, all_gu_locations, d_h):
+    """
+    Solves the waypoint optimization problem for GTOA.
+    """
+    num_groups = len(ordered_vghs_with_groups)
+    if num_groups == 0:
+        return np.array([segment_start_pos, END_POS]), np.linalg.norm(END_POS - segment_start_pos)
+
+    def objective_func(vars):
+        total_length = 0
+        waypoints = vars.reshape(-1, 2)
+        
+        total_length += np.linalg.norm(waypoints[0] - segment_start_pos)
+        
+        for i in range(num_groups):
+            s_i, e_i = waypoints[2*i], waypoints[2*i + 1]
+            total_length += np.linalg.norm(e_i - s_i)
+            if i < num_groups - 1:
+                s_next = waypoints[2*(i+1)]
+                total_length += np.linalg.norm(s_next - e_i)
+                
+        total_length += np.linalg.norm(END_POS - waypoints[-1])
+        return total_length
+
+    constraints = []
+    for i, group_info in enumerate(ordered_vghs_with_groups):
+        vgh_idx = group_info['vgh']
+        member_indices = [vgh_idx] + group_info['members']
+        
+        for member_idx in member_indices:
+            member_loc = all_gu_locations[member_idx]
+            constraints.append({
+                'type': 'ineq',
+                'fun': lambda vars, i=i, gl=member_loc: d_h**2 - np.sum((vars.reshape(-1, 2)[2*i] - gl)**2)
+            })
+            constraints.append({
+                'type': 'ineq',
+                'fun': lambda vars, i=i, gl=member_loc: d_h**2 - np.sum((vars.reshape(-1, 2)[2*i+1] - gl)**2)
+            })
+
+    initial_vgh_locs = np.array([all_gu_locations[g['vgh']] for g in ordered_vghs_with_groups])
+    initial_guess = np.repeat(initial_vgh_locs, 2, axis=0).flatten()
+
+    # *** MODIFICATION: Increased maxiter for better convergence ***
+    result = minimize(objective_func, initial_guess, method='SLSQP', constraints=constraints, options={'maxiter': 1000})
+    
+    # *** MODIFICATION: Added fallback for non-convergence ***
+    if not result.success:
+        print("  Warning: GTOA waypoint optimization did not converge. Using initial guess as fallback.")
+        waypoints = initial_guess.reshape(-1, 2)
+        final_cost = objective_func(initial_guess)
+    else:
+        waypoints = result.x.reshape(-1, 2)
+        final_cost = result.fun
+
+    full_trajectory = [segment_start_pos]
+    full_trajectory.extend(waypoints)
+    full_trajectory.append(END_POS)
+    
+    return np.array(full_trajectory), final_cost
+
+
+def gtoa_algorithm(gu_locations, d_h):
+    """Implements the Group-based Trajectory Optimization Algorithm (GTOA)."""
+    print("Step 2: Optimizing trajectory using GTOA...")
+    num_gus = len(gu_locations)
+    
+    dist_matrix = squareform(pdist(gu_locations))
+    adj_matrix = (dist_matrix <= d_h).astype(int)
+    np.fill_diagonal(adj_matrix, 0)
+
+    remaining_gus_indices = set(range(num_gus))
+    groups = []
+
+    while remaining_gus_indices:
+        rem_list = list(remaining_gus_indices)
+        sub_adj_matrix = adj_matrix[np.ix_(rem_list, rem_list)]
+        neighbor_counts = np.sum(sub_adj_matrix, axis=1)
+        
+        if not neighbor_counts.any(): 
+            best_vgh_local_idx = 0
+        else:
+            best_vgh_local_idx = np.argmax(neighbor_counts)
+
+        vgh_idx = rem_list[best_vgh_local_idx]
+        
+        group_info = {'vgh': vgh_idx, 'members': []}
+        remaining_gus_indices.remove(vgh_idx)
+        
+        neighbors = np.where(adj_matrix[vgh_idx, :] == 1)[0]
+        
+        members_to_remove = []
+        for neighbor_idx in neighbors:
+            if neighbor_idx in remaining_gus_indices:
+                group_info['members'].append(neighbor_idx)
+                members_to_remove.append(neighbor_idx)
+        
+        for idx in members_to_remove:
+            remaining_gus_indices.remove(idx)
+            
+        groups.append(group_info)
+    
+    print(f"  GTOA: Formed {len(groups)} groups.")
+
+    vgh_indices = [g['vgh'] for g in groups]
+    vgh_locations = gu_locations[vgh_indices]
+    
+    ordered_local_indices = solve_tsp_for_order(START_POS, vgh_locations)
+    
+    ordered_groups = [groups[i] for i in ordered_local_indices]
+    
+    final_trajectory, trajectory_length = optimize_gtoa_waypoints(
+        START_POS, ordered_groups, gu_locations, d_h
+    )
+
+    print(f"GTOA finished. Final trajectory length: {trajectory_length:.2f} m")
+    return final_trajectory, trajectory_length

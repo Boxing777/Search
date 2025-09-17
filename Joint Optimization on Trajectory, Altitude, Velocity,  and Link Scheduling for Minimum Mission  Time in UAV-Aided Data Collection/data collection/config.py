@@ -36,5 +36,5 @@ H_MIN = 50                 # Minimum altitude
 H_MAX = 300                # Maximum altitude
 
 # --- Data Collection Parameters ---
-DEFAULT_DATA_FILE_SIZE_MBITS = 50 # Mbits
+DEFAULT_DATA_FILE_SIZE_MBITS = 150 # Mbits
 DATA_TRANSMISSION_RATE_R = BANDWIDTH_B * np.log2(1 + SNR_THRESHOLD) # bps
