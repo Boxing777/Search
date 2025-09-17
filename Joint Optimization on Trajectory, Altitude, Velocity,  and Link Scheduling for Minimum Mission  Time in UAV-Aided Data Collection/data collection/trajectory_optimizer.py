@@ -76,7 +76,7 @@ def optimize_waypoints(segment_start_pos, gu_locations_ordered, d_h):
         
     initial_guess = np.repeat(gu_locations_ordered, 2, axis=0).flatten()
 
-    result = minimize(objective_func, initial_guess, method='SLSQP', constraints=constraints, options={'maxiter': 200})
+    result = minimize(objective_func, initial_guess, method='SLSQP', constraints=constraints, options={'maxiter': 1000})
     
     if not result.success:
         print("  Warning: Waypoint optimization did not converge.")

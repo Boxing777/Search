@@ -1,8 +1,11 @@
 # main.py
 import numpy as np
+import time
 from config import AREA_WIDTH, AREA_HEIGHT, START_POS, END_POS
 from altitude_optimizer import find_optimal_altitude
+# Import both algorithms
 from trajectory_optimizer import stoa_algorithm
+from trajectory_optimizer_lookahead import stoa_lookahead_algorithm
 from velocity_scheduler import solve_velocity_and_scheduling
 from plotting import plot_scenario
 
@@ -11,45 +14,73 @@ def main():
     num_gus = 20
     print(f"Simulating for N = {num_gus} Ground Users.")
     
-    # Set a random seed to ensure reproducible results for each run.
     np.random.seed(42) 
     gu_locations = np.random.rand(num_gus, 2) * np.array([AREA_WIDTH, AREA_HEIGHT])
 
-    # --- Step 1: Altitude Optimization ---
+    # --- Step 1: Altitude Optimization (Common for both algorithms) ---
     print("\n--- Step 1: Altitude Optimization ---")
     optimal_h, max_d_h = find_optimal_altitude()
     
-    # --- Step 2: Trajectory Optimization ---
-    print("\n--- Step 2: Trajectory Optimization (STOA) ---")
-    final_trajectory, trajectory_length = stoa_algorithm(gu_locations, max_d_h)
-    
-    # --- Step 3: Velocity and Link Scheduling ---
-    print("\n--- Step 3: Velocity and Link Scheduling (BCD) ---")
-    time_results = solve_velocity_and_scheduling(final_trajectory, gu_locations, max_d_h)
+    # --- Run and Compare Trajectory Algorithms ---
 
-    # --- Final Results ---
-    print("\n" + "="*45)
-    print("      UAV Data Collection - Final Results")
-    print("="*45)
+    # --- Algorithm 1: Original STOA ---
+    print("\n" + "="*50)
+    print("  Running Original STOA Algorithm")
+    print("="*50)
+    start_time_stoa = time.time()
+    stoa_trajectory, stoa_length = stoa_algorithm(gu_locations, max_d_h)
+    end_time_stoa = time.time()
+    stoa_runtime = end_time_stoa - start_time_stoa
+    
+    # --- Algorithm 2: STOA with Lookahead ---
+    print("\n" + "="*50)
+    print("  Running STOA with Lookahead Algorithm")
+    print("="*50)
+    start_time_lookahead = time.time()
+    # You can change lookahead_k to 2, 3, 4, etc. to see the effect
+    lookahead_trajectory, lookahead_length = stoa_lookahead_algorithm(gu_locations, max_d_h, lookahead_k=3)
+    end_time_lookahead = time.time()
+    lookahead_runtime = end_time_lookahead - start_time_lookahead
+
+    # --- Final Results and Comparison ---
+    print("\n" + "="*50)
+    print("      ALGORITHM COMPARISON RESULTS")
+    print("="*50)
     print(f"Scenario Parameters:")
     print(f"  - Number of Ground Users: {num_gus}")
-    print(f"  - Start Position: {np.array2string(START_POS, precision=1)}")
-    print(f"  - End Position:   {np.array2string(END_POS, precision=1)}")
-    print("-" * 45)
-    print(f"Optimization Outputs:")
-    print(f"  - Optimal Altitude (H*):          {optimal_h:.2f} m")
-    print(f"  - Max Communication Radius (D_H*): {max_d_h:.2f} m")
-    print(f"  - Optimized Trajectory Length:    {trajectory_length:.2f} m")
-    print("-" * 45)
-    print(f"Time Analysis:")
-    print(f"  - Min. Theoretical Flying Time:   {time_results['min_flying_time']:.2f} s (at max speed)")
-    print(f"  - Min. Theoretical Comm. Time:    {time_results['min_communication_time']:.2f} s")
-    print(f"  - >>> FINAL MISSION TIME <<<:     {time_results['total_mission_time']:.2f} s")
-    print("=" * 45 + "\n")
+    print(f"  - Optimal Altitude (H*): {optimal_h:.2f} m")
+    print(f"  - Max Comm. Radius (D_H*): {max_d_h:.2f} m")
+    print("-" * 50)
+    print("Original STOA:")
+    print(f"  - Trajectory Length: {stoa_length:.2f} m")
+    print(f"  - Runtime:           {stoa_runtime:.2f} s")
+    print("-" * 50)
+    print("STOA with Lookahead (k=3):")
+    print(f"  - Trajectory Length: {lookahead_length:.2f} m")
+    print(f"  - Runtime:           {lookahead_runtime:.2f} s")
+    print("-" * 50)
+
+    improvement = ((stoa_length - lookahead_length) / stoa_length) * 100 if stoa_length > 0 else 0
+    print(f"Path Length Improvement with Lookahead: {improvement:.2f}%")
+    
+    # --- Final steps with the BETTER trajectory (usually the lookahead one) ---
+    if lookahead_length < stoa_length:
+        print("\nProceeding with the superior Lookahead trajectory...")
+        final_trajectory = lookahead_trajectory
+    else:
+        print("\nProceeding with the original STOA trajectory...")
+        final_trajectory = stoa_trajectory
+    
+    # --- Step 3: Velocity and Link Scheduling (using the best trajectory) ---
+    print("\n--- Step 3: Velocity and Link Scheduling (BCD) ---")
+    time_results = solve_velocity_and_scheduling(final_trajectory, gu_locations, max_d_h)
+    print(f"\n>>> FINAL MISSION TIME (using best path): {time_results['total_mission_time']:.2f} s <<<")
     
     # --- Visualization ---
-    print("Displaying trajectory plot...")
-    plot_scenario(gu_locations, final_trajectory, max_d_h)
+    print("\nDisplaying trajectory plot for the Lookahead algorithm...")
+    plot_scenario(gu_locations, lookahead_trajectory, max_d_h)
+    print("Displaying trajectory plot for the original STOA algorithm...")
+    plot_scenario(gu_locations, stoa_trajectory, max_d_h)
 
 
 if __name__ == "__main__":
