@@ -1,85 +1,172 @@
-# velocity_scheduler.py (NEW, CORRECTED VERSION)
+# velocity_scheduler.py
 import numpy as np
+from scipy.optimize import linprog
 from config import UAV_MAX_SPEED_VMAX, DATA_TRANSMISSION_RATE_R, DEFAULT_DATA_FILE_SIZE_MBITS
+
+def discretize_trajectory(trajectory, segment_length=20.0):
+    """
+    Discretizes a given trajectory into smaller segments of roughly equal length.
+    
+    Args:
+        trajectory (np.array): An array of waypoints (N x 2).
+        segment_length (float): The desired length for each small segment.
+
+    Returns:
+        np.array: An array of the new, more numerous points defining the discretized path.
+    """
+    points = [trajectory[0]]
+    total_dist = 0.0
+    for i in range(len(trajectory) - 1):
+        p1, p2 = trajectory[i], trajectory[i + 1]
+        segment_vec = p2 - p1
+        length = np.linalg.norm(segment_vec)
+        if length < 1e-6:
+            continue
+            
+        direction = segment_vec / length
+        
+        # Calculate how many new points to add in this major segment
+        num_new_points = int(np.floor((total_dist + length) / segment_length)) - int(np.floor(total_dist / segment_length))
+        
+        for j in range(1, num_new_points + 1):
+            dist_from_p1 = (int(np.floor(total_dist / segment_length)) + j) * segment_length - total_dist
+            if dist_from_p1 <= length:
+                points.append(p1 + dist_from_p1 * direction)
+        total_dist += length
+    
+    # Ensure the final point of the trajectory is always included
+    if np.linalg.norm(points[-1] - trajectory[-1]) > 1e-6:
+        points.append(trajectory[-1])
+        
+    return np.array(points)
 
 def solve_velocity_and_scheduling(trajectory, gu_locations, d_h):
     """
-    Calculates the minimum mission time based on a clearer, physically accurate model.
-    This replaces the previous BCD implementation to correctly handle hover time.
-    The new model is: Mission Time = Flying Time + Hovering Time.
-    """
-    print("Step 3: Calculating mission time (Fly + Hover model)...")
+    Implements the robust Block Coordinate Descent (BCD) algorithm to jointly optimize
+    velocity (via time allocation delta_j) and link scheduling (I_nj),
+    as described in Section IV-B and Algorithm 3 of the paper.
 
-    num_gus = len(gu_locations)
-    if num_gus == 0:
-        trajectory_length = np.linalg.norm(trajectory[-1] - trajectory[0])
-        mission_time = trajectory_length / UAV_MAX_SPEED_VMAX
+    Args:
+        trajectory (np.array): The optimized trajectory waypoints.
+        gu_locations (np.array): The locations of the Ground Users.
+        d_h (float): The maximum communication radius.
+
+    Returns:
+        dict: A dictionary containing summary time stats and detailed per-segment results
+              (delta, schedule matrix, and discretized points) for plotting and analysis.
+    """
+    print("Step 3: Jointly optimizing velocity and link scheduling using BCD...")
+
+    # --- 1. Discretization and Parameter Setup ---
+    traj_points = discretize_trajectory(trajectory, segment_length=20.0)
+    J = len(traj_points) - 1  # Number of discretized segments
+    if J <= 0:
+        # Handle very short or non-existent trajectories
+        mission_time = np.linalg.norm(trajectory[-1] - trajectory[0]) / UAV_MAX_SPEED_VMAX if len(trajectory) > 1 else 0
         return {
-            "total_mission_time": mission_time,
-            "min_flying_time": mission_time,
-            "min_communication_time": 0,
-            "hover_time": 0
+            "time_stats": {"total_mission_time": mission_time, "min_flying_time": mission_time, "min_communication_time": 0},
+            "delta_per_segment": np.array([]),
+            "schedule_matrix": np.array([]),
+            "discretized_points": traj_points
         }
 
-    # --- Step 1: Calculate Total Flying Time (T_fly) ---
-    # This is the time required to traverse the trajectory at maximum speed.
-    trajectory_length = np.sum(np.linalg.norm(trajectory[1:] - trajectory[:-1], axis=1))
-    t_fly = trajectory_length / UAV_MAX_SPEED_VMAX
+    N = len(gu_locations)  # Number of GUs
+    d_j = np.linalg.norm(traj_points[1:] - traj_points[:-1], axis=1)  # Length of each discretized segment
 
-    # --- Step 2: Calculate Total Required Communication Time (T_comm_required) ---
-    # This is the net time the communication module must be active.
-    total_data_to_collect = num_gus * DEFAULT_DATA_FILE_SIZE_MBITS * 1e6 # in bits
-    t_comm_required = total_data_to_collect / DATA_TRANSMISSION_RATE_R
+    # Determine which GU is in communication range for each segment
+    in_range = np.zeros((N, J), dtype=bool)
+    for j in range(J):
+        mid_point = (traj_points[j] + traj_points[j+1]) / 2
+        for n in range(N):
+            if np.linalg.norm(mid_point - gu_locations[n]) <= d_h:
+                in_range[n, j] = True
 
-    # --- Step 3: Calculate Available Communication Time During Flight ---
-    # This is the most critical step. We calculate how much time the UAV spends
-    # inside any communication circle while flying at V_max.
-    t_comm_available_during_flight = 0.0
+    # --- 2. Robust BCD Initialization ---
+    # This is a critical step. A naive initialization can trap the BCD algorithm.
+    # We start with a realistic guess for the mission time to ensure feasibility.
+    t_fly_min = np.sum(d_j / UAV_MAX_SPEED_VMAX)
+    total_data = N * DEFAULT_DATA_FILE_SIZE_MBITS * 1e6
+    t_comm_min = total_data / DATA_TRANSMISSION_RATE_R
     
-    # The trajectory is a series of waypoints [P0, P1, P2, ...].
-    # P0 is Start, P_last is End. P1, P2... are the S/E points.
-    # We analyze the segments between waypoints, e.g., P0->P1, P1->P2 etc.
-    for i in range(len(trajectory) - 1):
-        p_start = trajectory[i]
-        p_end = trajectory[i+1]
-        segment_vec = p_end - p_start
-        segment_len = np.linalg.norm(segment_vec)
-        if segment_len < 1e-6:
-            continue # Skip zero-length segments
+    # Start with a feasible time, adding a small buffer to help the solver.
+    initial_total_time = max(t_fly_min, t_comm_min) * 1.05
+    
+    # Distribute this total time proportionally across segments based on their length
+    total_len = np.sum(d_j)
+    delta = (d_j / total_len) * initial_total_time if total_len > 0 else np.zeros(J)
+    # Ensure the initial delta still respects the maximum velocity constraint
+    delta = np.maximum(delta, d_j / UAV_MAX_SPEED_VMAX)
+    
+    # --- 3. BCD Algorithm Iteration ---
+    max_iters = 15
+    tolerance = 1e-3
+    prev_mission_time = np.inf
+    I = np.zeros((N, J))  # Initialize schedule matrix
 
-        # For each segment, check how much of it lies inside ANY GU's circle.
-        # This is a simplified but effective check.
-        # We check the midpoint of the segment. If it's inside a circle,
-        # we assume the whole segment's flight time is available for communication.
-        # This is a reasonable approximation for the "Fly-through" case.
-        mid_point = (p_start + p_end) / 2
-        is_in_any_circle = False
-        for gu_loc in gu_locations:
-            if np.linalg.norm(mid_point - gu_loc) <= d_h:
-                is_in_any_circle = True
-                break
+    for r in range(max_iters):
+        # === STEP 3a: Optimize Link Scheduling (I) for a given time allocation (delta) ===
+        # This is a Linear Program (LP). We solve for a flattened array of I variables.
+        c_I = np.tile(delta, N)
         
-        if is_in_any_circle:
-            time_on_segment = segment_len / UAV_MAX_SPEED_VMAX
-            t_comm_available_during_flight += time_on_segment
+        # Constraint 1: sum_n(I_nj) <= 1 for each segment j (at most one GU served at a time).
+        A_ub_I_sum = np.zeros((J, N*J))
+        b_ub_I_sum = np.ones(J)
+        for j in range(J):
+            A_ub_I_sum[j, j::J] = 1  # Selects I_0j, I_1j, I_2j, ...
+        
+        # Constraint 2: sum_j(I_nj * R * delta_j) >= M_n for each GU n (collect all data).
+        A_ub_I_data = np.zeros((N, N*J))
+        data_per_gu = DEFAULT_DATA_FILE_SIZE_MBITS * 1e6
+        b_ub_I_data = np.full(N, -data_per_gu)  # Using -A*x <= -b for a >= constraint
+        for n in range(N):
+            A_ub_I_data[n, n*J:(n+1)*J] = -delta * DATA_TRANSMISSION_RATE_R
+        
+        A_ub_I = np.vstack([A_ub_I_sum, A_ub_I_data])
+        b_ub_I = np.concatenate([b_ub_I_sum, b_ub_I_data])
+        
+        # Bounds: I_nj must be 0 if not in range, otherwise between 0 and 1.
+        bounds_I = [(0, 1) if in_range.flatten()[i] else (0, 0) for i in range(N*J)]
+        
+        res_I = linprog(c_I, A_ub=A_ub_I, b_ub=b_ub_I, bounds=bounds_I, method='highs')
+        # If solver succeeds, update I. Otherwise, keep the previous I.
+        I = res_I.x.reshape(N, J) if res_I.success else I
 
-    # --- Step 4: Calculate Required Hover Time (T_hover) ---
-    # If the time available during flight is not enough, the rest must be done by hovering.
-    t_hover = max(0, t_comm_required - t_comm_available_during_flight)
+        # === STEP 3b: Optimize Time Allocation (delta) for a given link schedule (I) ===
+        # This is also an LP. Objective: min sum(delta_j).
+        c_delta = np.ones(J)
+        
+        # Constraint 1: sum_j(I_nj * R * delta_j) >= M_n for each GU n.
+        A_ub_delta_data = -I * DATA_TRANSMISSION_RATE_R
+        b_ub_delta_data = np.full(N, -data_per_gu)
+        
+        # Bounds: delta_j must be >= d_j / V_max (velocity constraint).
+        bounds_delta = [(dj / UAV_MAX_SPEED_VMAX, None) for dj in d_j]
+        
+        res_delta = linprog(c_delta, A_ub=A_ub_delta_data, b_ub=b_ub_delta_data, bounds=bounds_delta, method='highs')
 
-    # --- Step 5: Calculate Final Mission Time ---
-    t_mission = t_fly + t_hover
-
-    print(f"Calculation finished.")
-    print(f"  - Total flying time (T_fly): {t_fly:.2f} s")
-    print(f"  - Time available for comm during flight: {t_comm_available_during_flight:.2f} s")
-    print(f"  - Required comm time (T_comm): {t_comm_required:.2f} s")
-    print(f"  - Calculated hover time (T_hover): {t_hover:.2f} s")
+        if res_delta.success:
+            delta = res_delta.x
+        
+        # --- 4. Check for Convergence ---
+        current_mission_time = np.sum(delta)
+        if abs(current_mission_time - prev_mission_time) < tolerance:
+            print(f"  BCD converged at iteration {r+1}.")
+            break
+        prev_mission_time = current_mission_time
+    
+    final_mission_time = np.sum(delta)
+    print(f"BCD finished. Minimum mission time calculated: {final_mission_time:.2f} s")
     
     time_stats = {
-        "total_mission_time": t_mission,
-        "min_flying_time": t_fly, # This name is now equivalent to t_fly
-        "min_communication_time": t_comm_required, # This is t_comm_required
-        "hover_time": t_hover
+        "total_mission_time": final_mission_time,
+        "min_flying_time": t_fly_min,
+        "min_communication_time": t_comm_min
     }
-    return time_stats
+
+    # Return a dictionary with all detailed results for advanced analysis and plotting
+    return {
+        "time_stats": time_stats,
+        "delta_per_segment": delta,
+        "schedule_matrix": I,
+        "discretized_points": traj_points
+    }
