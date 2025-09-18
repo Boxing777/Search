@@ -9,13 +9,14 @@ from plotting import plot_scenario
 def main():
     # --- ALGORITHM & SCENARIO SELECTION ---
     # Choose the trajectory optimization algorithm: 'STOA' or 'GTOA'
-    TRAJECTORY_ALGORITHM = 'STOA'
+    TRAJECTORY_ALGORITHM = 'GTOA'
     
     # Choose the distribution mode for Ground Users: 'UNIFORM' or 'NORMAL'
     DISTRIBUTION_MODE = 'NORMAL'
 
     # --- Scenario Setup ---
-    num_gus = 2
+    num_gus = 8
+    
     print(f"Simulating for N = {num_gus} Ground Users with {DISTRIBUTION_MODE} distribution.")
     
     # Set a random seed to ensure reproducible results for each run
