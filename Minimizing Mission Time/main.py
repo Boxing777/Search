@@ -1,10 +1,11 @@
 # ==============================================================================
-#                      Main Simulation Execution Script
+#                      Main Simulation Execution Script (CORRECTED)
 #
 # File Objective:
 # This file is the central entry point and master controller for the entire
-# simulation. It orchestrates the complete workflow, from setting up the
-# environment to running optimization algorithms and visualizing the results.
+# simulation. This corrected version implements the proper "look-ahead"
+# optimization loop in the main function to prevent suboptimal, crossing
+# trajectories, faithfully representing the paper's joint optimization model.
 # ==============================================================================
 
 # --- Step 1: Imports and Setup ---
@@ -34,7 +35,8 @@ def main():
     print(f"Environment created: {params.AREA_WIDTH}x{params.AREA_HEIGHT}m area with {params.NUM_GNS} GNs.")
 
     # Define the data requirement for each GN (in bits)
-    required_data_per_gn = 1000 * 1e6 # 100 Mbits, as a placeholder
+    # Set a high value to test the Hovering Mode (HM)
+    required_data_per_gn = 100 * 1e6 # 100 Mbits. Change this to see different behaviors.
     print(f"Data requirement per GN set to {required_data_per_gn / 1e6:.0f} Mbits.")
 
     # --- Step 3: Phase 1 - Run Mission Allocation (Genetic Algorithm) ---
@@ -63,7 +65,7 @@ def main():
     # --- Step 4: Phase 2 - Run Trajectory Optimization (JOFC) ---
     print("\n[Step 3/5] Running Trajectory Optimization (JOFC) for each UAV...")
     
-    # Instantiate the trajectory optimizer
+    # Instantiate the trajectory optimizer to use its helper functions
     traj_optimizer = TrajectoryOptimizer(params.__dict__)
     
     # Dictionaries to store the final results
@@ -90,28 +92,87 @@ def main():
         for i, gn_index in enumerate(gn_indices_route):
             current_gn_coord = sim_env.gn_positions[gn_index]
             
-            # Determine the coordinate of the next stop
+            # Determine the coordinate of the next stop for "look-ahead" calculation
             if i < num_gns_in_route - 1:
-                next_gn_coord = sim_env.gn_positions[gn_indices_route[i+1]]
-            else: # This is the last GN, so the next stop is the data center
-                next_gn_coord = sim_env.data_center_pos
+                next_stop_coord = sim_env.gn_positions[gn_indices_route[i+1]]
+            else: 
+                next_stop_coord = sim_env.data_center_pos
 
-            # Call the JOFC optimizer for the current GN
-            print(f"  - Optimizing for GN {gn_index}...")
-            result = traj_optimizer.run_jofc_for_gn(
-                prev_fop=previous_fop,
-                current_gn_coord=current_gn_coord,
-                next_gn_coord=next_gn_coord, # Pass the true next stop for flight-out calc
-                required_data=required_data_per_gn
-            )
+            # =========================================================================
+            # +++ CORE LOGIC CORRECTION: Implement the full P5 optimization in main +++
+            # This loop finds the best (FIP, FOP) pair for the current GN by 
+            # minimizing the total time for the entire leg: 
+            # time(prev_fop -> FIP) + time_collection + time(FOP -> next_stop_coord)
+            # =========================================================================
+            print(f"  - Optimizing for GN {gn_index} (considering next stop at {np.round(next_stop_coord, 2)})...")
             
-            # Store the optimized segments for this GN
+            min_total_leg_time = float('inf')
+            best_result_for_leg = {}
+
+            # Discretize the circle around the current GN to find candidate FIPs and FOPs
+            num_angles = 8
+            angles = np.linspace(0, 2 * np.pi, num_angles, endpoint=False)
+            candidate_points = np.array([
+                current_gn_coord + traj_optimizer.comm_radius_d * np.array([np.cos(theta), np.sin(theta)])
+                for theta in angles
+            ])
+            
+            for fip in candidate_points:
+                for fop in candidate_points:
+                    # --- Calculate the three components of time for this (FIP, FOP) pair ---
+                    
+                    # 1. Flight-in time
+                    flight_time_in = np.linalg.norm(previous_fop - fip) / params.UAV_MAX_SPEED
+                    
+                    # 2. Collection time (using the helpers from TrajectoryOptimizer)
+                    c_f_max = traj_optimizer._calculate_fm_max_throughput(fip, fop, current_gn_coord)
+                    
+                    if required_data_per_gn <= c_f_max:
+                        mode = 'FM'
+                        optimal_oh, collection_time = traj_optimizer._find_optimal_oh_for_fm(fip, fop, current_gn_coord, required_data_per_gn)
+                    else:
+                        mode = 'HM'
+                        optimal_oh = current_gn_coord
+                        collection_flight_time = (np.linalg.norm(fip - optimal_oh) + np.linalg.norm(optimal_oh - fop)) / params.UAV_MAX_SPEED
+                        hover_data_needed = required_data_per_gn - c_f_max
+                        hover_time = hover_data_needed / traj_optimizer.hover_datarate if traj_optimizer.hover_datarate > 0 else float('inf')
+                        collection_time = collection_flight_time + hover_time
+                    
+                    # 3. Flight-out time (This is the crucial "look-ahead" part)
+                    flight_time_out = np.linalg.norm(fop - next_stop_coord) / params.UAV_MAX_SPEED
+                    
+                    # --- Total time for this entire leg (the value to be minimized) ---
+                    total_leg_time = flight_time_in + collection_time + flight_time_out
+                    
+                    if total_leg_time < min_total_leg_time:
+                        min_total_leg_time = total_leg_time
+                        best_result_for_leg = {
+                            'fip': fip,
+                            'fop': fop,
+                            'oh': optimal_oh,
+                            'mode': mode,
+                            'flight_in_time': flight_time_in,
+                            'collection_time': collection_time,
+                        }
+
+            # After searching, we have found the best result for the current leg
+            result = best_result_for_leg
+            
+            if not result:
+                print(f"FATAL ERROR: Could not find a valid trajectory for GN {gn_index}. Aborting.")
+                break 
+
+            # Store the optimized segments for visualization
             uav_path_segments.append({'type': 'flight', 'start': previous_fop, 'end': result['fip']})
             uav_path_segments.append({'type': 'collection', **result})
             
             # Update state for the next iteration
-            current_uav_time += result['service_time']
+            service_time_for_gn = result['flight_in_time'] + result['collection_time']
+            current_uav_time += service_time_for_gn
             previous_fop = result['fop']
+            
+            print(f"    -> Best FOP found at {np.round(previous_fop, 2)}. Service Time for GN: {service_time_for_gn:.2f}s")
+
 
         # After visiting all GNs, add the final leg back to the data center
         final_flight_time = np.linalg.norm(previous_fop - sim_env.data_center_pos) / params.UAV_MAX_SPEED
@@ -121,7 +182,7 @@ def main():
         # Store the final results for this UAV
         final_trajectories[uav_id] = uav_path_segments
         uav_mission_times[uav_id] = current_uav_time
-        print(f"  - Optimization complete for {uav_id}. Total time: {current_uav_time:.2f}s")
+        print(f"  - Optimization complete for {uav_id}. Total mission time: {current_uav_time:.2f}s")
 
     # --- Step 5: Analysis and Output ---
     print("\n[Step 4/5] Analyzing final results...")

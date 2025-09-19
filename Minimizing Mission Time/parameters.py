@@ -28,8 +28,11 @@ AREA_WIDTH = 3000.0  # meters
 # The height of the square simulation area. Typically same as AREA_WIDTH.
 AREA_HEIGHT = 3000.0 # meters
 
+
+
+
 # The total number of Ground Nodes (GNs) that need their data collected (N).
-NUM_GNS = 3 # integer
+NUM_GNS =20 # integer
 
 # The total number of Unmanned Aerial Vehicles (UAVs) for the mission (M).
 NUM_UAVS = 1 # integer
