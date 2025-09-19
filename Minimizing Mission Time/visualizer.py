@@ -16,24 +16,41 @@ from typing import Dict, List, Tuple
 # A predefined list of colors for differentiating UAVs in plots.
 UAV_COLORS = ['red', 'blue', 'green', 'purple', 'orange', 'brown', 'pink', 'gray']
 
+# --- Helper Function for Drawing Arrows ---
+
+def _add_arrow_to_line(ax: plt.Axes, start: np.ndarray, end: np.ndarray, color: str):
+    """
+    Adds a direction arrow to a line segment on the given axes.
+    The arrow is placed near the middle of the segment.
+
+    Args:
+        ax (plt.Axes): The Matplotlib axes to draw on.
+        start (np.ndarray): The starting (x, y) coordinate of the line.
+        end (np.ndarray): The ending (x, y) coordinate of the line.
+        color (str): The color of the arrow.
+    """
+    # Use annotate to draw an arrow. We shrink it from both ends to place it
+    # in the middle of the segment without touching the endpoints.
+    ax.annotate(
+        "",
+        xy=end,
+        xytext=start,
+        arrowprops=dict(
+            arrowstyle="->",
+            color=color,
+            shrinkA=15, # Distance (in points) to shrink from the start
+            shrinkB=15, # Distance (in points) to shrink from the end
+            linewidth=1
+        ),
+        zorder=4 # Ensure arrows are drawn on top of lines
+    )
+
 # --- Core Plotting Functions ---
 
 def plot_gn_environment(ax: plt.Axes, gns: np.ndarray, data_center_pos: Tuple[float, float],
                         area_width: float, area_height: float, comm_radius: float = 0.0):
     """
     Creates a base plot showing the initial setup of the simulation environment.
-
-    This function draws the GNs, data center, and optional communication ranges
-    onto a provided Matplotlib Axes object.
-
-    Args:
-        ax (plt.Axes): The Matplotlib axes on which to draw.
-        gns (np.ndarray): The 2D coordinates of all Ground Nodes.
-        data_center_pos (Tuple[float, float]): The 2D coordinates of the data center.
-        area_width (float): The width of the simulation area.
-        area_height (float): The height of the simulation area.
-        comm_radius (float, optional): The communication radius D to draw around each GN.
-                                       Defaults to 0.0 (no circle).
     """
     ax.set_xlim(0, area_width)
     ax.set_ylim(0, area_height)
@@ -54,7 +71,7 @@ def plot_initial_routes(gns: np.ndarray, data_center_pos: Tuple[float, float],
                         uav_assignments: Dict[str, List[int]], area_width: float,
                         area_height: float, title: str = "Initial UAV Routes (MTSP Solution)"):
     """
-    Visualizes the initial straight-line paths determined by the Genetic Algorithm.
+    Visualizes the initial straight-line paths with direction arrows.
     """
     fig, ax = plt.subplots(figsize=(12, 12))
     plot_gn_environment(ax, gns, data_center_pos, area_width, area_height)
@@ -67,8 +84,17 @@ def plot_initial_routes(gns: np.ndarray, data_center_pos: Tuple[float, float],
         path_coords = [data_center_pos] + [gns[idx] for idx in route_indices] + [data_center_pos]
         path_coords = np.array(path_coords)
         
+        # Plot the straight-line path
         ax.plot(path_coords[:, 0], path_coords[:, 1], color=color, linestyle='--',
                 marker='.', markersize=8, label=f'{uav_id} Path')
+        
+        # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        # ++ NEW: Add arrows to each segment of the initial path     ++
+        # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        for j in range(len(path_coords) - 1):
+            start_point = path_coords[j]
+            end_point = path_coords[j+1]
+            _add_arrow_to_line(ax, start_point, end_point, color)
 
     ax.set_title(title)
     ax.legend()
@@ -80,7 +106,7 @@ def plot_final_trajectories(gns: np.ndarray, data_center_pos: Tuple[float, float
                             area_height: float, comm_radius: float,
                             title: str = "Final Optimized Trajectories"):
     """
-    Visualizes the final, optimized V-shaped trajectories from the TrajectoryOptimizer.
+    Visualizes the final, optimized V-shaped trajectories with direction arrows.
     """
     fig, ax = plt.subplots(figsize=(12, 12))
     plot_gn_environment(ax, gns, data_center_pos, area_width, area_height, comm_radius)
@@ -94,23 +120,26 @@ def plot_final_trajectories(gns: np.ndarray, data_center_pos: Tuple[float, float
             if segment['type'] == 'flight':
                 start, end = np.array(segment['start']), np.array(segment['end'])
                 ax.plot([start[0], end[0]], [start[1], end[1]], color=color,
-                        linestyle='-', linewidth=1.5, label=label)
+                        linestyle='-', linewidth=1.5, label=label, zorder=2)
+                
+                # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+                # ++ NEW: Add arrow to flight segment                        ++
+                # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+                _add_arrow_to_line(ax, start, end, color)
                         
             elif segment['type'] == 'collection':
                 fip, oh, fop = np.array(segment['fip']), np.array(segment['oh']), np.array(segment['fop'])
-                
-                # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-                # ++ CODE COMPLETED BASED ON YOUR REVIEW AND SUGGESTIONS ++
-                # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-                
-                # Combine the points to form the V-shaped path: [fip, oh, fop]
                 v_shape_path = np.array([fip, oh, fop])
                 
-                # Plot the V-shaped path with a thicker line to highlight it
                 ax.plot(v_shape_path[:, 0], v_shape_path[:, 1], color=color,
-                        linestyle='-', linewidth=2.5, marker='.', markersize=5, label=label)
+                        linestyle='-', linewidth=2.5, marker='.', markersize=5, label=label, zorder=2)
+                
+                # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+                # ++ NEW: Add arrows to both legs of the V-shape             ++
+                # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+                _add_arrow_to_line(ax, fip, oh, color)
+                _add_arrow_to_line(ax, oh, fop, color)
 
-    # Final plot adjustments
     ax.set_title(title)
     ax.legend()
     plt.tight_layout()
