@@ -47,14 +47,12 @@ class MissionAllocationGA:
         self.num_iterations = params['GA_NUM_ITERATIONS']
         self.crossover_rate = params['GA_CROSSOVER_RATE']
         self.mutation_rate = params['GA_MUTATION_RATE']
-        self.tournament_size = params.get('GA_TOURNAMENT_SIZE', 3) # A common default
+        self.tournament_size = params.get('GA_TOURNAMENT_SIZE', 3) 
 
         # Mission cost model parameters
         self.scaling_a = params['SCALING_FACTOR_A']
         self.scaling_b = params['SCALING_FACTOR_B']
-        # This parameter would ideally be pre-calculated based on SNR thresholds.
-        # For now, we'll assume it's provided or use a placeholder.
-        self.transmission_radius_d = params.get('TRANSMISSION_RADIUS_D', 500.0)
+        self.transmission_radius_d = params.get('TRANSMISSION_RADIUS_D', 500.0) 
 
         # GA state
         self.population = []
@@ -77,14 +75,14 @@ class MissionAllocationGA:
         current_route = []
 
         for gene in chromosome:
-            if gene < 0: # It's a divider
+            if gene < 0:
                 routes[current_uav_idx] = current_route
                 current_uav_idx += 1
                 current_route = []
-            else: # It's a GN index
+            else:
                 current_route.append(gene)
         
-        routes[current_uav_idx] = current_route # Add the last route
+        routes[current_uav_idx] = current_route
         return routes
 
     def _calculate_fitness(self, chromosome: List[int]) -> float:
@@ -104,14 +102,12 @@ class MissionAllocationGA:
                 all_tour_costs.append(0.0)
                 continue
 
-            # Cost from data center to the first GN
             prev_coord = self.data_center_pos
             curr_coord = self.gns[route[0]]
             tour_cost += models.calculate_initial_mission_cost(
                 prev_coord, curr_coord, self.transmission_radius_d, self.scaling_a, self.scaling_b
             )
             
-            # Costs between GNs in the route
             for i in range(len(route) - 1):
                 prev_coord = self.gns[route[i]]
                 curr_coord = self.gns[route[i+1]]
@@ -119,7 +115,6 @@ class MissionAllocationGA:
                     prev_coord, curr_coord, self.transmission_radius_d, self.scaling_a, self.scaling_b
                 )
 
-            # Cost from the last GN back to the data center
             prev_coord = self.gns[route[-1]]
             curr_coord = self.data_center_pos
             tour_cost += models.calculate_initial_mission_cost(
@@ -128,7 +123,6 @@ class MissionAllocationGA:
             
             all_tour_costs.append(tour_cost)
 
-        # The fitness is the maximum cost (the "min-max" objective)
         return max(all_tour_costs)
 
     def _selection(self) -> List[int]:
@@ -138,36 +132,49 @@ class MissionAllocationGA:
         winner_index = np.argmin(tournament_fitness)
         return tournament[winner_index]
 
+    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+    # ++ CORRECTED AND EFFICIENT IMPLEMENTATION OF THE CROSSOVER FUNCTION ++
+    # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
     def _crossover(self, parent1: List[int], parent2: List[int]) -> Tuple[List[int], List[int]]:
         """
         Performs Order Crossover (OX1) on two parents to create two offspring.
+        This is the corrected and more efficient implementation.
         """
         size = len(parent1)
-        child1, child2 = [-1] * size, [-1] * size
+        
+        # Helper function for filling a child, encapsulating the core OX1 logic
+        def fill_child(p1, p2, start, end):
+            child = [None] * size
+            
+            # 1. Copy the crossover segment from p1
+            child[start:end] = p1[start:end]
+            
+            # 2. Use a set for fast lookup of genes already in the child
+            genes_in_child = set(child[start:end])
+            
+            # 3. Fill the rest of the child with genes from p2 in order
+            p2_idx = end
+            child_idx = end
+            
+            while None in child:
+                # Get the gene from p2, wrapping around if necessary
+                gene_to_add = p2[p2_idx % size]
+                
+                if gene_to_add not in genes_in_child:
+                    child[child_idx % size] = gene_to_add
+                    child_idx += 1
+                
+                p2_idx += 1
+                
+            return child
 
-        # Select a random subsequence from parent1
+        # Select two random points for the crossover segment
         start, end = sorted(random.sample(range(size), 2))
         
-        # Copy subsequence from parents to children
-        child1[start:end] = parent1[start:end]
-        child2[start:end] = parent2[start:end]
-
-        # Fill remaining spots for child1
-        p2_genes = [gene for gene in parent2 if gene not in child1]
-        idx = 0
-        for i in range(size):
-            if child1[i] == -1:
-                child1[i] = p2_genes[idx]
-                idx += 1
+        # Create the two children
+        child1 = fill_child(parent1, parent2, start, end)
+        child2 = fill_child(parent2, parent1, start, end)
         
-        # Fill remaining spots for child2
-        p1_genes = [gene for gene in parent1 if gene not in child2]
-        idx = 0
-        for i in range(size):
-            if child2[i] == -1:
-                child2[i] = p1_genes[idx]
-                idx += 1
-
         return child1, child2
 
     def _mutation(self, chromosome: List[int]) -> List[int]:
@@ -184,20 +191,17 @@ class MissionAllocationGA:
         self._create_initial_population()
 
         for gen in range(self.num_iterations):
-            # Calculate fitness for the entire population
             fitness_scores = [self._calculate_fitness(ind) for ind in self.population]
 
-            # Update the best solution found so far
             min_fitness_in_gen = min(fitness_scores)
             if min_fitness_in_gen < self.best_solution_fitness:
                 self.best_solution_fitness = min_fitness_in_gen
                 best_idx = np.argmin(fitness_scores)
-                self.best_solution_chromosome = self.population[best_idx]
+                self.best_solution_chromosome = self.population[best_idx][:] # Store a copy
 
             if (gen + 1) % 10 == 0:
                 print(f"Generation {gen+1}/{self.num_iterations}, Best Fitness: {self.best_solution_fitness:.2f}")
 
-            # Create the next generation
             next_generation = []
             # Elitism: Keep the best individual from the current generation
             best_current_idx = np.argmin(fitness_scores)
@@ -223,10 +227,8 @@ class MissionAllocationGA:
 
             self.population = next_generation
 
-        # Decode the best chromosome into a human-readable format
         final_routes_decoded = self._decode_chromosome(self.best_solution_chromosome)
         
-        # Format the output
         final_assignment = {
             f"UAV_{i}": final_routes_decoded.get(i, []) for i in range(self.num_uavs)
         }

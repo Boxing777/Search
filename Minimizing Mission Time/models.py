@@ -28,9 +28,9 @@ def calculate_los_probability(elevation_angle_degrees: float, a: float, b: float
     Formula: P_LoS = 1 / (1 + a * exp(-b * (elevation_angle_degrees - a)))
 
     Args:
-        elevation_angle_degrees (float): The elevation angle £c in degrees.
+        elevation_angle_degrees (float): The elevation angle theta in degrees.
         a (float): The environment-dependent parameter 'a' from the LoS model.
-        b (float): The environment-dependent parameter '£]' (beta) from the LoS model.
+        b (float): The environment-dependent parameter 'beta' from the LoS model.
 
     Returns:
         float: The probability of a LoS connection (between 0 and 1).
@@ -55,21 +55,16 @@ def calculate_path_loss(distance_3d: float, elevation_angle_degrees: float, para
     Returns:
         float: The total path loss in decibels (dB).
     """
-    # Calculate Free Space Path Loss (FSPL) in dB
-    # FSPL = 20*log10(d) + 20*log10(f) + 20*log10(4*pi/c)
     fc = params['CARRIER_FREQUENCY']
     fspl_db = 20 * np.log10(distance_3d) + 20 * np.log10(fc) + 20 * np.log10((4 * np.pi) / SPEED_OF_LIGHT)
 
-    # Calculate the Line-of-Sight probability
     los_params = params['LOS_PROBABILITY_PARAMS']
     p_los = calculate_los_probability(elevation_angle_degrees, los_params['a'], los_params['beta'])
 
-    # Calculate the average additional loss from LoS and NLoS components
     eta_los = params['LOS_ADDITIONAL_LOSS_DB']
     eta_nlos = params['NLOS_ADDITIONAL_LOSS_DB']
     additional_loss_db = p_los * eta_los + (1 - p_los) * eta_nlos
 
-    # Total path loss is the sum of the two components
     total_path_loss_db = fspl_db + additional_loss_db
 
     return total_path_loss_db
@@ -88,10 +83,7 @@ def calculate_snr(gn_transmit_power_watts: float, total_noise_power_watts: float
     Returns:
         float: The SNR in a linear scale.
     """
-    # Convert path loss from dB to a linear scale
     linear_path_loss = 10**(path_loss_db / 10.0)
-
-    # Calculate SNR
     snr = gn_transmit_power_watts / (total_noise_power_watts * linear_path_loss)
     return snr
 
@@ -108,8 +100,6 @@ def calculate_transmission_rate(snr_linear: float, bandwidth_hz: float) -> float
     Returns:
         float: The achievable data rate in bits per second (bps).
     """
-    # Shannon-Hartley theorem
-    # Ensure SNR is non-negative before taking the logarithm
     if snr_linear < 0:
         return 0.0
     rate = bandwidth_hz * np.log2(1 + snr_linear)
@@ -125,7 +115,7 @@ def calculate_flight_power(velocity_ms: float, params: Dict) -> float:
     """
     Calculates UAV propulsion power based on flight speed, using model from [27].
 
-    Formula: P(v) = P0*(1+3v?/U_tip?) + P1*(sqrt(1+v?/(4v??)) - v?/(2v??))?/? + 0.5*d?*£l*s?*A*v?
+    Formula: P(v) = P0*(1+3v^2/U_tip^2) + P1*(sqrt(1+v^4/(4v0^4)) - v^2/(2v0^2))^(1/2) + 0.5*d0*rho*s0*A*v^3
 
     Args:
         velocity_ms (float): The instantaneous speed (v) of the UAV in m/s.
@@ -135,7 +125,6 @@ def calculate_flight_power(velocity_ms: float, params: Dict) -> float:
     Returns:
         float: The total propulsion power P_f(v) in Watts.
     """
-    # Unpack parameters for clarity
     p0 = params['P0']
     p1 = params['P1']
     u_tip = params['U_tip']
@@ -146,15 +135,10 @@ def calculate_flight_power(velocity_ms: float, params: Dict) -> float:
     a_rotor = params['A']
     v = velocity_ms
 
-    # Blade profile power component
     part1 = p0 * (1 + (3 * v**2) / u_tip**2)
-
-    # Induced power component
-    inner_sqrt = np.sqrt(1 + (v**4) / (4 * v0**4)) - (v**2) / (2 * v0**2)
-    # The term inside the outer sqrt can be negative for very high speeds, clip at 0
-    part2 = p1 * np.sqrt(max(0, inner_sqrt))
-
-    # Parasite drag power component
+    inner_sqrt_val = 1 + (v**4) / (4 * v0**4)
+    inner_term = np.sqrt(inner_sqrt_val) - (v**2) / (2 * v0**2)
+    part2 = p1 * np.sqrt(max(0, inner_term))
     part3 = 0.5 * d0 * rho * s0 * a_rotor * v**3
 
     total_power = part1 + part2 + part3
@@ -181,17 +165,13 @@ def calculate_initial_mission_cost(gn_coord_prev: np.ndarray, gn_coord_curr: np.
         b (float): The scaling factor for the collection mission (SCALING_FACTOR_B).
 
     Returns:
-        float: The dimensionless mission cost (£F_ij) for this path segment.
+        float: The dimensionless mission cost (Î“_ij) for this path segment.
     """
-    # Calculate the 2D Euclidean distance between the two GN centers
     distance = np.linalg.norm(gn_coord_curr - gn_coord_prev)
 
-    # Apply the cost formula based on whether the transmission ranges overlap
     if distance > 2 * transmission_radius_d:
-        # Non-overlapping case
         cost = a * (distance - 2 * transmission_radius_d) + 2 * b * transmission_radius_d
     else:
-        # Overlapping case
         cost = b * distance
 
     return cost

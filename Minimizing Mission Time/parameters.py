@@ -35,7 +35,7 @@ NUM_GNS = 10 # integer
 NUM_UAVS = 1 # integer
 
 # The 2D coordinates of the data center. UAVs start and end here.
-DATA_CENTER_POS: Tuple[float, float] = (5000.0, 5000.0) # meters
+DATA_CENTER_POS: Tuple[float, float] = (1500.0, 1500.0) # meters
 
 # ==============================================================================
 # Section 2: UAV Physical Parameters
@@ -44,7 +44,7 @@ DATA_CENTER_POS: Tuple[float, float] = (5000.0, 5000.0) # meters
 # ==============================================================================
 
 # The fixed operational altitude of all UAVs (H).
-UAV_ALTITUDE = 200.0 # meters
+UAV_ALTITUDE = 50.0 # meters
 
 # The maximum cruising speed of the UAVs (v_max). Assumed travel speed between zones.
 UAV_MAX_SPEED = 30.0 # meters/second
