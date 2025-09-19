@@ -34,7 +34,7 @@ def main():
     print(f"Environment created: {params.AREA_WIDTH}x{params.AREA_HEIGHT}m area with {params.NUM_GNS} GNs.")
 
     # Define the data requirement for each GN (in bits)
-    required_data_per_gn = 100 * 1e6 # 100 Mbits, as a placeholder
+    required_data_per_gn = 1000 * 1e6 # 100 Mbits, as a placeholder
     print(f"Data requirement per GN set to {required_data_per_gn / 1e6:.0f} Mbits.")
 
     # --- Step 3: Phase 1 - Run Mission Allocation (Genetic Algorithm) ---
