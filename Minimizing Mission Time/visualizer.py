@@ -114,17 +114,15 @@ def plot_final_trajectories(gns: np.ndarray, data_center_pos: Tuple[float, float
     for i, (uav_id, segments) in enumerate(final_trajectories.items()):
         color = UAV_COLORS[i % len(UAV_COLORS)]
         
+        # Use a single label for the legend per UAV
+        ax.plot([], [], color=color, linestyle='-', linewidth=2.0, label=f'{uav_id} Trajectory')
+
         for j, segment in enumerate(segments):
-            label = f'{uav_id} Trajectory' if j == 0 else None
             
             if segment['type'] == 'flight':
                 start, end = np.array(segment['start']), np.array(segment['end'])
                 ax.plot([start[0], end[0]], [start[1], end[1]], color=color,
-                        linestyle='-', linewidth=1.5, label=label, zorder=2)
-                
-                # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-                # ++ NEW: Add arrow to flight segment                        ++
-                # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+                        linestyle='-', linewidth=1.5, zorder=2)
                 _add_arrow_to_line(ax, start, end, color)
                         
             elif segment['type'] == 'collection':
@@ -132,16 +130,24 @@ def plot_final_trajectories(gns: np.ndarray, data_center_pos: Tuple[float, float
                 v_shape_path = np.array([fip, oh, fop])
                 
                 ax.plot(v_shape_path[:, 0], v_shape_path[:, 1], color=color,
-                        linestyle='-', linewidth=2.5, marker='.', markersize=5, label=label, zorder=2)
+                        linestyle='-', linewidth=2.5, marker='.', markersize=5, zorder=2)
                 
-                # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-                # ++ NEW: Add arrows to both legs of the V-shape             ++
-                # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
                 _add_arrow_to_line(ax, fip, oh, color)
                 _add_arrow_to_line(ax, oh, fop, color)
 
+                # <<< NEW SECTION TO INDICATE HOVERING >>>
+                # If the mode was HM, draw a filled circle at the hover point (OH)
+                if segment.get('mode') == 'HM':
+                    ax.plot(oh[0], oh[1], 'o', color=color, markersize=10, 
+                            markeredgecolor='black', zorder=5, label=f'{uav_id} Hover Point' if j==0 else "")
+
+
+    # Create a consolidated legend
+    handles, labels = ax.get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    ax.legend(by_label.values(), by_label.keys())
+    
     ax.set_title(title)
-    ax.legend()
     plt.tight_layout()
     plt.show()
 
