@@ -110,7 +110,7 @@ def main():
             best_result_for_leg = {}
 
             # Discretize the circle around the current GN to find candidate FIPs and FOPs
-            num_angles = 8
+            num_angles = 16
             angles = np.linspace(0, 2 * np.pi, num_angles, endpoint=False)
             candidate_points = np.array([
                 current_gn_coord + traj_optimizer.comm_radius_d * np.array([np.cos(theta), np.sin(theta)])

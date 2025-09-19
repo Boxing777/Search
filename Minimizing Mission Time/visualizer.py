@@ -130,7 +130,7 @@ def plot_final_trajectories(gns: np.ndarray, data_center_pos: Tuple[float, float
                 v_shape_path = np.array([fip, oh, fop])
                 
                 ax.plot(v_shape_path[:, 0], v_shape_path[:, 1], color=color,
-                        linestyle='-', linewidth=2.5, marker='.', markersize=5, zorder=2)
+                        linestyle='-', linewidth=1.5, marker='.', markersize=5, zorder=2)
                 
                 _add_arrow_to_line(ax, fip, oh, color)
                 _add_arrow_to_line(ax, oh, fop, color)
