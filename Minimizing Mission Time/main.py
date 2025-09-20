@@ -17,6 +17,7 @@ import parameters as params
 from environment import SimulationEnvironment
 from mission_allocation_ga import MissionAllocationGA
 from trajectory_optimizer import TrajectoryOptimizer
+from convex_trajectory_planner import ConvexTrajectoryPlanner
 import visualizer as vis
 
 def main():
@@ -70,9 +71,20 @@ def main():
     # Instantiate the trajectory optimizer to use its helper functions
     traj_optimizer = TrajectoryOptimizer(params.__dict__)
     
+  
+    convex_planner = ConvexTrajectoryPlanner(
+        gns=sim_env.gn_positions,
+        data_center_pos=sim_env.data_center_pos,
+        comm_radius=traj_optimizer.comm_radius_d
+    )
+    
+    # Dictionaries to store the final results from both methods
+    final_trajectories = {} 
     # Dictionaries to store the final results
     final_trajectories = {}
     uav_mission_times = {}
+    convex_trajectories = {}
+    convex_path_lengths = {}
 
     # Main optimization loop: iterate through each UAV and its assigned GNs
     for uav_id, gn_indices_route in initial_assignment.items():
@@ -80,6 +92,8 @@ def main():
             print(f"{uav_id} has no assigned GNs. Mission time: 0s.")
             final_trajectories[uav_id] = []
             uav_mission_times[uav_id] = 0.0
+            convex_trajectories[uav_id] = np.array([])
+            convex_path_lengths[uav_id] = 0.0
             continue
 
         print(f"Optimizing trajectory for {uav_id} serving GNs: {gn_indices_route}")
@@ -185,7 +199,11 @@ def main():
         final_trajectories[uav_id] = uav_path_segments
         uav_mission_times[uav_id] = current_uav_time
         print(f"  - Optimization complete for {uav_id}. Total mission time: {current_uav_time:.2f}s")
-
+        print("  -> Running Convex Planner for the same sequence...")
+        convex_result = convex_planner.plan_shortest_path_for_sequence(gn_indices_route)
+        convex_trajectories[uav_id] = convex_result['path']
+        convex_path_lengths[uav_id] = convex_result['length']
+        print(f"     Convex Path Length: {convex_result['length']:.2f}m")
     # --- Step 5: Analysis and Output ---
     print("\n[Step 4/5] Analyzing final results...")
     
@@ -198,18 +216,24 @@ def main():
     total_execution_time = end_time - start_time
     
     print("\n--- Simulation Summary ---")
-    for uav_id, mission_time in uav_mission_times.items():
-        print(f"  - {uav_id} Total Mission Time: {mission_time:.2f} seconds")
-    print(f"\nSystem Mission Completion Time (MCT): {system_mct:.2f} seconds")
+    for uav_id in initial_assignment.keys():
+        if uav_id in uav_mission_times:
+            print(f"  - {uav_id} V-Shaped Mission Time: {uav_mission_times.get(uav_id, 0):.2f} seconds")
+            convex_len = convex_path_lengths.get(uav_id, 0)
+            convex_flight_time = convex_len / params.UAV_MAX_SPEED if convex_len > 0 else 0
+            print(f"  - {uav_id} Convex Path Length:    {convex_len:.2f} meters (Theoretical Flight Time: {convex_flight_time:.2f}s)")
+    
+    print(f"\nSystem Mission Completion Time (MCT) for V-Shaped: {system_mct:.2f} seconds")
     print(f"Total script execution time: {total_execution_time:.2f} seconds")
     print("--------------------------")
     
     # --- Step 6: Final Visualization ---
     print("\n[Step 5/5] Visualizing final optimized trajectories...")
-    vis.plot_final_trajectories(
+    vis.plot_final_comparison_trajectories(
         gns=sim_env.gn_positions,
         data_center_pos=sim_env.data_center_pos,
-        final_trajectories=final_trajectories,
+        v_shaped_trajectories=final_trajectories,
+        convex_trajectories=convex_trajectories,
         area_width=params.AREA_WIDTH,
         area_height=params.AREA_HEIGHT,
         comm_radius=traj_optimizer.comm_radius_d

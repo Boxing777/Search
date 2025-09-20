@@ -1,11 +1,10 @@
 # ==============================================================================
-#                      Simulation Results Visualizer
+#                      Simulation Results Visualizer (MODIFIED FOR COMPARISON)
 #
 # File Objective:
 # This file is responsible for all graphical representations of the simulation
-# results. It uses Matplotlib to create plots and charts that make the complex
-# outputs of the simulation algorithms easy to understand, corresponding to the
-# figures in the research paper.
+# results. It has been modified to support the comparison of different
+# trajectory optimization algorithms on the same plot.
 # ==============================================================================
 
 # Import necessary libraries
@@ -22,12 +21,6 @@ def _add_arrow_to_line(ax: plt.Axes, start: np.ndarray, end: np.ndarray, color: 
     """
     Adds a direction arrow to a line segment on the given axes.
     The arrow is placed near the middle of the segment.
-
-    Args:
-        ax (plt.Axes): The Matplotlib axes to draw on.
-        start (np.ndarray): The starting (x, y) coordinate of the line.
-        end (np.ndarray): The ending (x, y) coordinate of the line.
-        color (str): The color of the arrow.
     """
     # Use annotate to draw an arrow. We shrink it from both ends to place it
     # in the middle of the segment without touching the endpoints.
@@ -84,13 +77,9 @@ def plot_initial_routes(gns: np.ndarray, data_center_pos: Tuple[float, float],
         path_coords = [data_center_pos] + [gns[idx] for idx in route_indices] + [data_center_pos]
         path_coords = np.array(path_coords)
         
-        # Plot the straight-line path
         ax.plot(path_coords[:, 0], path_coords[:, 1], color=color, linestyle='--',
                 marker='.', markersize=8, label=f'{uav_id} Path')
         
-        # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-        # ++ NEW: Add arrows to each segment of the initial path     ++
-        # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         for j in range(len(path_coords) - 1):
             start_point = path_coords[j]
             end_point = path_coords[j+1]
@@ -101,55 +90,70 @@ def plot_initial_routes(gns: np.ndarray, data_center_pos: Tuple[float, float],
     plt.tight_layout()
     plt.show()
 
-def plot_final_trajectories(gns: np.ndarray, data_center_pos: Tuple[float, float],
-                            final_trajectories: Dict[str, List[Dict]], area_width: float,
-                            area_height: float, comm_radius: float,
-                            title: str = "Final Optimized Trajectories"):
+
+# <<< RENAMED & MODIFIED FUNCTION TO HANDLE COMPARISON >>>
+def plot_final_comparison_trajectories(gns: np.ndarray, data_center_pos: Tuple[float, float],
+                                       v_shaped_trajectories: Dict[str, List[Dict]],
+                                       convex_trajectories: Dict[str, np.ndarray],
+                                       area_width: float, area_height: float, comm_radius: float,
+                                       title: str = "Final Optimized Trajectories Comparison"):
     """
-    Visualizes the final, optimized V-shaped trajectories with direction arrows.
+    Visualizes and compares the V-shaped and convex optimal trajectories on one plot.
     """
-    fig, ax = plt.subplots(figsize=(12, 12))
+    fig, ax = plt.subplots(figsize=(14, 14))
     plot_gn_environment(ax, gns, data_center_pos, area_width, area_height, comm_radius)
 
-    for i, (uav_id, segments) in enumerate(final_trajectories.items()):
-        color = UAV_COLORS[i % len(UAV_COLORS)]
+    # --- Plot V-Shaped Trajectories (Time-Optimal) ---
+    for i, (uav_id, segments) in enumerate(v_shaped_trajectories.items()):
+        color = 'red' # Use red for the V-shaped path
         
-        # Use a single label for the legend per UAV
-        ax.plot([], [], color=color, linestyle='-', linewidth=2.0, label=f'{uav_id} Trajectory')
+        # Create a single legend entry for this path type
+        ax.plot([], [], color=color, linestyle='-', linewidth=2.0, label=f'{uav_id} V-Shaped (Time-Optimal)')
 
-        for j, segment in enumerate(segments):
-            
+        for segment in segments:
             if segment['type'] == 'flight':
                 start, end = np.array(segment['start']), np.array(segment['end'])
-                ax.plot([start[0], end[0]], [start[1], end[1]], color=color,
-                        linestyle='-', linewidth=1.5, zorder=2)
-                _add_arrow_to_line(ax, start, end, color)
-                        
+                ax.plot([start[0], end[0]], [start[1], end[1]], color=color, linestyle='-', linewidth=1.5, zorder=2)
             elif segment['type'] == 'collection':
-                fip, oh, fop = np.array(segment['fip']), np.array(segment['oh']), np.array(segment['fop'])
-                v_shape_path = np.array([fip, oh, fop])
-                
-                ax.plot(v_shape_path[:, 0], v_shape_path[:, 1], color=color,
-                        linestyle='-', linewidth=1.5, marker='.', markersize=5, zorder=2)
-                
-                _add_arrow_to_line(ax, fip, oh, color)
-                _add_arrow_to_line(ax, oh, fop, color)
-
-                # <<< NEW SECTION TO INDICATE HOVERING >>>
-                # If the mode was HM, draw a filled circle at the hover point (OH)
+                v_path = np.array([segment['fip'], segment['oh'], segment['fop']])
+                ax.plot(v_path[:, 0], v_path[:, 1], color=color, linestyle='-', linewidth=1.5, marker='.', markersize=4, zorder=2)
                 if segment.get('mode') == 'HM':
-                    ax.plot(oh[0], oh[1], 'o', color=color, markersize=10, 
-                            markeredgecolor='black', zorder=5, label=f'{uav_id} Hover Point' if j==0 else "")
+                    ax.plot(segment['oh'][0], segment['oh'][1], 'o', color=color, markersize=8, markeredgecolor='black')
 
+    # --- Plot Convex Optimal Trajectories (Shortest Path) ---
+    for i, (uav_id, path) in enumerate(convex_trajectories.items()):
+        color = 'blue' # Use blue for the convex path
+        path_np = np.array(path)
+        if len(path_np) > 0:
+            ax.plot(path_np[:, 0], path_np[:, 1], color=color, linestyle='--', linewidth=2.0, marker='x', markersize=6, label=f'{uav_id} Convex (Shortest Path)')
 
-    # Create a consolidated legend
+    # Create a consolidated legend to avoid duplicate labels
     handles, labels = ax.get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
-    ax.legend(by_label.values(), by_label.keys())
+    ax.legend(by_label.values(), by_label.keys(), fontsize='large')
     
     ax.set_title(title)
     plt.tight_layout()
     plt.show()
+
+# Deprecated wrapper for backward compatibility. 
+# It now calls the new comparison function.
+def plot_final_trajectories(gns: np.ndarray, data_center_pos: Tuple[float, float],
+                            final_trajectories: Dict[str, List[Dict]], area_width: float,
+                            area_height: float, comm_radius: float,
+                            title: str = "Final Optimized Trajectories"):
+    print("Warning: plot_final_trajectories is deprecated. Using plot_final_comparison_trajectories instead.")
+    plot_final_comparison_trajectories(
+        gns=gns,
+        data_center_pos=data_center_pos,
+        v_shaped_trajectories=final_trajectories, # Assume the old call passes V-shaped data
+        convex_trajectories={}, # Pass an empty dict for the convex path
+        area_width=area_width,
+        area_height=area_height,
+        comm_radius=comm_radius,
+        title=title
+    )
+
 
 def plot_performance_curve(x_data: Dict[str, List], y_data: Dict[str, List],
                            x_label: str, y_label: str, title: str):
