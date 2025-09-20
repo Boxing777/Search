@@ -1,11 +1,10 @@
 # ==============================================================================
-#                      Main Simulation Execution Script (CORRECTED)
+#                      Main Simulation Execution Script (MODIFIED FOR COMPARISON)
 #
 # File Objective:
-# This file is the central entry point and master controller for the entire
-# simulation. This corrected version implements the proper "look-ahead"
-# optimization loop in the main function to prevent suboptimal, crossing
-# trajectories, faithfully representing the paper's joint optimization model.
+# This script runs the primary V-shaped trajectory optimization and, for comparison,
+# also computes the shortest possible geometric path for the same GN visiting
+# order using convex optimization. Both results are then visualized.
 # ==============================================================================
 
 # --- Step 1: Imports and Setup ---
@@ -22,12 +21,12 @@ import visualizer as vis
 
 def main():
     """
-    Main function to orchestrate the entire simulation workflow.
+    Main function to orchestrate the simulation and comparison workflow.
     """
     # --- Step 2: Initialization ---
     start_time = time.time()
     print("======================================================")
-    print("      UAV-Assisted Data Collection Simulation")
+    print("      UAV Trajectory Optimization Comparison")
     print("======================================================")
     print("\n[Step 1/5] Initializing simulation environment...")
 
@@ -48,8 +47,6 @@ def main():
         gns=sim_env.gn_positions,
         num_uavs=params.NUM_UAVS,
         data_center_pos=sim_env.data_center_pos,
-        
-        
         params=params.__dict__ # Pass params as a dictionary
     )
     ga_results = ga_solver.solve()
@@ -65,13 +62,13 @@ def main():
         area_height=params.AREA_HEIGHT
     )
     
-    # --- Step 4: Phase 2 - Run Trajectory Optimization (JOFC) ---
-    print("\n[Step 3/5] Running Trajectory Optimization (JOFC) for each UAV...")
+    # --- Step 4: Phase 2 - Run Trajectory Optimizations ---
+    print("\n[Step 3/5] Running Trajectory Optimizations for each UAV...")
     
     # Instantiate the trajectory optimizer to use its helper functions
     traj_optimizer = TrajectoryOptimizer(params.__dict__)
     
-  
+    # Instantiate the convex planner
     convex_planner = ConvexTrajectoryPlanner(
         gns=sim_env.gn_positions,
         data_center_pos=sim_env.data_center_pos,
@@ -79,8 +76,6 @@ def main():
     )
     
     # Dictionaries to store the final results from both methods
-    final_trajectories = {} 
-    # Dictionaries to store the final results
     final_trajectories = {}
     uav_mission_times = {}
     convex_trajectories = {}
@@ -96,9 +91,10 @@ def main():
             convex_path_lengths[uav_id] = 0.0
             continue
 
-        print(f"Optimizing trajectory for {uav_id} serving GNs: {gn_indices_route}")
+        print(f"\n--- Optimizing for {uav_id} with sequence: {gn_indices_route} ---")
         
-        # Initialize state for this UAV's tour
+        # --- Method 1: V-Shaped Trajectory (Your existing logic) ---
+        print("  -> Running V-Shaped Trajectory Optimizer...")
         previous_fop = sim_env.data_center_pos
         uav_path_segments = []
         current_uav_time = 0.0
@@ -114,12 +110,6 @@ def main():
             else: 
                 next_stop_coord = sim_env.data_center_pos
 
-            # =========================================================================
-            # +++ CORE LOGIC CORRECTION: Implement the full P5 optimization in main +++
-            # This loop finds the best (FIP, FOP) pair for the current GN by 
-            # minimizing the total time for the entire leg: 
-            # time(prev_fop -> FIP) + time_collection + time(FOP -> next_stop_coord)
-            # =========================================================================
             print(f"  - Optimizing for GN {gn_index} (considering next stop at {np.round(next_stop_coord, 2)})...")
             
             min_total_leg_time = float('inf')
@@ -198,15 +188,34 @@ def main():
         # Store the final results for this UAV
         final_trajectories[uav_id] = uav_path_segments
         uav_mission_times[uav_id] = current_uav_time
-        print(f"  - Optimization complete for {uav_id}. Total mission time: {current_uav_time:.2f}s")
+        print(f"  - Optimization complete for {uav_id}. V-Shaped Total mission time: {current_uav_time:.2f}s")
+
+        # --- Method 2: Convex Optimal Path ---
         print("  -> Running Convex Planner for the same sequence...")
         convex_result = convex_planner.plan_shortest_path_for_sequence(gn_indices_route)
         convex_trajectories[uav_id] = convex_result['path']
         convex_path_lengths[uav_id] = convex_result['length']
         print(f"     Convex Path Length: {convex_result['length']:.2f}m")
+
     # --- Step 5: Analysis and Output ---
     print("\n[Step 4/5] Analyzing final results...")
     
+    # <<< NEW SECTION: Calculate V-Shaped Path Lengths >>>
+    v_shaped_path_lengths = {}
+    for uav_id, segments in final_trajectories.items():
+        total_length = 0.0
+        for segment in segments:
+            if segment['type'] == 'flight':
+                start = np.array(segment['start'])
+                end = np.array(segment['end'])
+                total_length += np.linalg.norm(end - start)
+            elif segment['type'] == 'collection':
+                fip = np.array(segment['fip'])
+                oh = np.array(segment['oh'])
+                fop = np.array(segment['fop'])
+                total_length += np.linalg.norm(oh - fip) + np.linalg.norm(fop - oh)
+        v_shaped_path_lengths[uav_id] = total_length
+
     # Calculate the overall Mission Completion Time (MCT)
     system_mct = 0.0
     if uav_mission_times:
@@ -215,20 +224,24 @@ def main():
     end_time = time.time()
     total_execution_time = end_time - start_time
     
+    # <<< MODIFIED: Update summary output to include both path lengths >>>
     print("\n--- Simulation Summary ---")
     for uav_id in initial_assignment.keys():
         if uav_id in uav_mission_times:
-            print(f"  - {uav_id} V-Shaped Mission Time: {uav_mission_times.get(uav_id, 0):.2f} seconds")
+            print(f"--- {uav_id} Results ---")
+            print(f"  V-Shaped Mission Time: {uav_mission_times.get(uav_id, 0):.2f} seconds")
+            print(f"  V-Shaped Path Length:    {v_shaped_path_lengths.get(uav_id, 0):.2f} meters")
+            
             convex_len = convex_path_lengths.get(uav_id, 0)
             convex_flight_time = convex_len / params.UAV_MAX_SPEED if convex_len > 0 else 0
-            print(f"  - {uav_id} Convex Path Length:    {convex_len:.2f} meters (Theoretical Flight Time: {convex_flight_time:.2f}s)")
+            print(f"  Convex Path Length:      {convex_len:.2f} meters (Theoretical Flight Time: {convex_flight_time:.2f}s)")
     
     print(f"\nSystem Mission Completion Time (MCT) for V-Shaped: {system_mct:.2f} seconds")
     print(f"Total script execution time: {total_execution_time:.2f} seconds")
     print("--------------------------")
     
     # --- Step 6: Final Visualization ---
-    print("\n[Step 5/5] Visualizing final optimized trajectories...")
+    print("\n[Step 5/5] Visualizing final combined trajectories...")
     vis.plot_final_comparison_trajectories(
         gns=sim_env.gn_positions,
         data_center_pos=sim_env.data_center_pos,
