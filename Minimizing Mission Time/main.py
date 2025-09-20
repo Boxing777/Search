@@ -47,6 +47,8 @@ def main():
         gns=sim_env.gn_positions,
         num_uavs=params.NUM_UAVS,
         data_center_pos=sim_env.data_center_pos,
+        
+        
         params=params.__dict__ # Pass params as a dictionary
     )
     ga_results = ga_solver.solve()
