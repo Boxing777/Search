@@ -4,28 +4,28 @@ from matplotlib.lines import Line2D
 import numpy as np
 import math
 
-# --- ã€æ ¸å¿ƒä¿®æ”¹ã€‘ ---
-# å°å…¥æˆ‘å€‘è‡ªå·±çš„è£ç½®ç”Ÿæˆæ¨¡çµ„
+# --- ?????¸å??ä¿®æ?¹ã?? ---
+# å°???¥æ???????ªå·±???è£?ç½®ç?????æ¨¡ç??
 from Devices import generate_device_locations
 
-# --- è§£æ±ºä¸­æ–‡äº‚ç¢¼å•é¡Œ ---
+# --- è§?æ±ºä¸­???äº?ç¢¼å??é¡? ---
 plt.rcParams['font.sans-serif'] = ['Microsoft JhengHei'] 
 plt.rcParams['axes.unicode_minus'] = False
 
-# --- å…¨åŸŸè®Šæ•¸èˆ‡åƒæ•¸è¨­å®š ---
+# --- ??¨å??è®???¸è???????¸è¨­å®? ---
 ALL_DRAGGABLE_OBJECTS = []
 SELECTED_OBJECT = None
 SNAP_RADIUS = 50
 
-# --- ã€æ ¸å¿ƒä¿®æ”¹ã€‘ ---
-# å°‡å ´æ™¯åƒæ•¸çµ±ä¸€å®šç¾©åœ¨ä¸»ç¨‹å¼çš„é–‹é ­
+# --- ?????¸å??ä¿®æ?¹ã?? ---
+# å°???´æ?¯å????¸çµ±ä¸?å®?ç¾©å?¨ä¸»ç¨?å¼??????????
 AREA_WIDTH = 2000
 AREA_HEIGHT = 2000
 COMM_RADIUS = 200
 BS_COORDS = (AREA_WIDTH / 2, AREA_HEIGHT / 2)
 BS_SIZE = 100
 
-# å‹•æ…‹ç”Ÿæˆåœ°é¢è£ç½®åº§æ¨™ï¼Œä¸¦å°‡å…¶è¨­ç‚ºå…¨åŸŸè®Šæ•¸
+# ??????????????°é?¢è??ç½®åº§æ¨?ï¼?ä¸¦å????¶è¨­??ºå?¨å??è®????
 STATIC_NODES_COORDS = generate_device_locations(
     num_nodes=25,
     area_width=AREA_WIDTH,
@@ -36,7 +36,7 @@ STATIC_NODES_COORDS = generate_device_locations(
     bs_size=BS_SIZE
 )
 
-# (å¾é€™è£¡é–‹å§‹ï¼Œå¾Œé¢çš„é¡åˆ¥å’Œå‡½æ•¸å®šç¾©èˆ‡ä¸Šä¸€ç‰ˆå®Œå…¨ç›¸åŒ)
+# (å¾????è£¡é??å§?ï¼?å¾???¢ç??é¡???¥å????½æ?¸å??ç¾©è??ä¸?ä¸????å®???¨ç?¸å??)
 def set_selected(obj):
     global SELECTED_OBJECT
     if SELECTED_OBJECT: SELECTED_OBJECT.set_selected(False)
@@ -149,31 +149,31 @@ class ObjectFactory:
                 if obj_type == 'line': obj.drag_target = 'line'; obj.press_data = (100, 100, obj.p1[:], obj.p2[:])
                 ALL_DRAGGABLE_OBJECTS.append(obj); self.fig.canvas.draw_idle(); break
 def draw_static_scenario_map(ax):
-    # ã€æ ¸å¿ƒä¿®æ”¹ã€‘é€™å€‹å‡½æ•¸ç¾åœ¨ä½¿ç”¨å…¨åŸŸè®Šæ•¸ä¾†ç¹ªè£½å ´æ™¯
+    # ?????¸å??ä¿®æ?¹ã??????????½æ?¸ç?¾å?¨ä½¿??¨å?¨å??è®???¸ä??ç¹ªè£½??´æ??
     if not STATIC_NODES_COORDS: return
     node_x_coords, node_y_coords = zip(*STATIC_NODES_COORDS)
     bs_bottom_left = (BS_COORDS[0] - BS_SIZE / 2, BS_COORDS[1] - BS_SIZE / 2)
-    base_station_patch = patches.Rectangle(bs_bottom_left, BS_SIZE, BS_SIZE, facecolor='green', edgecolor='black', linewidth=1.5, label='åŸºåœ°å° (BS)', zorder=2); ax.add_patch(base_station_patch)
-    ax.plot(node_x_coords, node_y_coords, 'ko', markersize=5, label='åœ°é¢è£ç½®', zorder=3)
+    base_station_patch = patches.Rectangle(bs_bottom_left, BS_SIZE, BS_SIZE, facecolor='green', edgecolor='black', linewidth=1.5, label='??ºå?°å?? (BS)', zorder=2); ax.add_patch(base_station_patch)
+    ax.plot(node_x_coords, node_y_coords, 'ko', markersize=5, label='??°é?¢è??ç½?', zorder=3)
     for x, y in STATIC_NODES_COORDS:
         communication_range = patches.Circle((x, y), COMM_RADIUS, linestyle='--', edgecolor='gray', facecolor='lightgray', alpha=0.4, zorder=1)
         ax.add_patch(communication_range)
     ax.set_xlim(0, AREA_WIDTH); ax.set_ylim(0, AREA_HEIGHT); ax.set_aspect('equal', adjustable='box')
-    ax.set_title('äº’å‹•å¼è·¯å¾‘è¦åŠƒ (é»æ“Šé¸ä¸­, Deleteéµåˆªé™¤)'); ax.set_xlabel('X åº§æ¨™ (å…¬å°º)'); ax.set_ylabel('Y åº§æ¨™ (å…¬å°º)')
+    ax.set_title('äº????å¼?è·¯å??è¦???? (é»??????¸ä¸­, Delete??µå?ªé??)'); ax.set_xlabel('X åº§æ?? (??¬å°º)'); ax.set_ylabel('Y åº§æ?? (??¬å°º)')
     ax.grid(True, linestyle=':', alpha=0.6)
-    ax.plot([], [], '--', color='gray', label=f'é€šè¨Šç¯„åœ (åŠå¾‘={COMM_RADIUS}m)')
+    ax.plot([], [], '--', color='gray', label=f'???è¨?ç¯???? (???å¾?={COMM_RADIUS}m)')
 def draw_toolbox(ax):
     ax.set_facecolor('whitesmoke'); ax.spines[:].set_visible(False); ax.set_xticks([]); ax.set_yticks([]); ax.set_xlim(0, 1); ax.set_ylim(0, 1)
-    ax.text(0.5, 0.9, 'å·¥å…·ç®±', ha='center', fontsize=12)
+    ax.text(0.5, 0.9, 'å·¥å?·ç®±', ha='center', fontsize=12)
     global TOOLBOX_TEMPLATES; TOOLBOX_TEMPLATES = []
     point_artist, = ax.plot(0.3, 0.8, 'o', color='yellow', markeredgecolor='black', markeredgewidth=0.5, markersize=10, picker=True, pickradius=15)
-    ax.text(0.5, 0.8, 'æ‹–æ›³é»', va='center', ha='left'); TOOLBOX_TEMPLATES.append({'artist': point_artist, 'type': 'point', 'color': 'yellow'})
+    ax.text(0.5, 0.8, '?????³é??', va='center', ha='left'); TOOLBOX_TEMPLATES.append({'artist': point_artist, 'type': 'point', 'color': 'yellow'})
     line_artist_red = Line2D([0.2, 0.4], [0.65, 0.65], color='red', linewidth=3, picker=True, pickradius=15); ax.add_line(line_artist_red)
-    ax.text(0.5, 0.65, 'ç´…è‰²è·¯å¾‘', va='center', ha='left'); TOOLBOX_TEMPLATES.append({'artist': line_artist_red, 'type': 'line', 'color': 'red'})
+    ax.text(0.5, 0.65, 'ç´???²è·¯å¾?', va='center', ha='left'); TOOLBOX_TEMPLATES.append({'artist': line_artist_red, 'type': 'line', 'color': 'red'})
     line_artist_blue = Line2D([0.2, 0.4], [0.45, 0.45], color='blue', linewidth=3, picker=True, pickradius=15); ax.add_line(line_artist_blue)
-    ax.text(0.5, 0.45, 'è—è‰²è·¯å¾‘', va='center', ha='left'); TOOLBOX_TEMPLATES.append({'artist': line_artist_blue, 'type': 'line', 'color': 'blue'})
+    ax.text(0.5, 0.45, '?????²è·¯å¾?', va='center', ha='left'); TOOLBOX_TEMPLATES.append({'artist': line_artist_blue, 'type': 'line', 'color': 'blue'})
     line_artist_black = Line2D([0.2, 0.4], [0.25, 0.25], color='black', linewidth=3, picker=True, pickradius=15); ax.add_line(line_artist_black)
-    ax.text(0.5, 0.25, 'é»‘è‰²è·¯å¾‘', va='center', ha='left'); TOOLBOX_TEMPLATES.append({'artist': line_artist_black, 'type': 'line', 'color': 'black'})
+    ax.text(0.5, 0.25, 'é»???²è·¯å¾?', va='center', ha='left'); TOOLBOX_TEMPLATES.append({'artist': line_artist_black, 'type': 'line', 'color': 'black'})
 
 if __name__ == '__main__':
     fig = plt.figure(figsize=(12, 10))
@@ -186,10 +186,10 @@ if __name__ == '__main__':
     draw_toolbox(ax_toolbox)
     factory = ObjectFactory(fig, ax_main, ax_toolbox)
     
-    # --- ã€æ ¸å¿ƒä¿®æ”¹ã€‘ ---
-    # å°‡ fig.legend(...) æ”¹ç‚º ax_main.legend(...)
-    # é€™æ¨£åœ–ä¾‹åªæœƒè¢«ç¹ªè£½åœ¨ä¸»åœ°åœ–çš„åº§æ¨™è»¸å…§ï¼Œä¸æœƒå½±éŸ¿åˆ°å·¥å…·ç®±çš„ä½ˆå±€
+    # --- ?????¸å??ä¿®æ?¹ã?? ---
+    # å°? fig.legend(...) ??¹ç?? ax_main.legend(...)
+    # ???æ¨????ä¾???ªæ??è¢«ç¹ªè£½å?¨ä¸»??°å?????åº§æ??è»¸å?§ï??ä¸????å½±é?¿å?°å·¥??·ç®±???ä½?å±?
     handles, labels = ax_main.get_legend_handles_labels()
-    ax_main.legend(handles, labels, loc='upper left') # ä½¿ç”¨ ax_main.legend
+    ax_main.legend(handles, labels, loc='upper left') # ä½¿ç?? ax_main.legend
     
     plt.show()
