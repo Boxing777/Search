@@ -1,13 +1,14 @@
 # ==============================================================================
-#                      Utility Functions Module (MODIFIED)
+#                      Utility Functions Module
 #
 # File Objective:
-# This file provides common helper functions. A new function to calculate
-# circle intersections has been added to support the JOFC algorithm.
+# This file provides common helper functions, especially for unit conversions
+# (e.g., dBm to Watts, dB to linear scale), that are used across multiple
+# modules in the simulation. This avoids code duplication and improves
+# maintainability.
 # ==============================================================================
 
 import numpy as np
-from typing import List
 
 def dbm_to_watts(dbm: float) -> float:
     """
@@ -36,51 +37,3 @@ def linear_to_db(linear: float) -> float:
     if linear <= 0:
         return -np.inf
     return 10 * np.log10(linear)
-
-# <<< NEW FUNCTION >>>
-def get_circle_intersections(c1: np.ndarray, r1: float, c2: np.ndarray, r2: float) -> List[np.ndarray]:
-    """
-    Calculates the intersection points of two circles.
-    
-    Args:
-        c1 (np.ndarray): Center of the first circle (x1, y1).
-        r1 (float): Radius of the first circle.
-        c2 (np.ndarray): Center of the second circle (x2, y2).
-        r2 (float): Radius of the second circle.
-        
-    Returns:
-        List[np.ndarray]: A list containing 0, 1, or 2 intersection points.
-    """
-    # Distance between centers
-    d = np.linalg.norm(c1 - c2)
-    
-    # Check for non-intersecting, touching, or identical cases
-    if d > r1 + r2 or d < abs(r1 - r2) or (d == 0 and r1 != r2):
-        return [] # No intersection
-    
-    x1, y1 = c1
-    x2, y2 = c2
-    
-    # Formula from https://mathworld.wolfram.com/Circle-CircleIntersection.html
-    a = (r1**2 - r2**2 + d**2) / (2 * d)
-    h = np.sqrt(max(0, r1**2 - a**2)) # Use max(0,...) to avoid floating point errors
-    
-    # Midpoint between the intersections
-    x_mid = x1 + a * (x2 - x1) / d
-    y_mid = y1 + a * (y2 - y1) / d
-    
-    # Calculate the two intersection points
-    p1 = np.array([
-        x_mid + h * (y2 - y1) / d,
-        y_mid - h * (x2 - x1) / d
-    ])
-    
-    if d == r1 + r2 or d == abs(r1-r2): # Circles touch at one point
-        return [p1]
-    
-    p2 = np.array([
-        x_mid - h * (y2 - y1) / d,
-        y_mid + h * (x2 - x1) / d
-    ])
-    
-    return [p1, p2]
