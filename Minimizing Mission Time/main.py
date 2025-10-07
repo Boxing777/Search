@@ -52,7 +52,13 @@ def main():
     print("======================================================")
     print("\n[Step 1/5] Initializing simulation environment...")
 
-    sim_env = SimulationEnvironment(params)
+    # 1. First, initialize the optimizer to get the communication radius
+    print("Pre-calculating communication radius D...")
+    traj_optimizer = TrajectoryOptimizer(params.__dict__)
+    comm_radius = traj_optimizer.comm_radius_d
+
+    # 2. Then, create the environment, passing the radius to constrain GN positions
+    sim_env = SimulationEnvironment(params, comm_radius=comm_radius) # Pass radius to constructor
     print(f"Environment created: {params.AREA_WIDTH}x{params.AREA_HEIGHT}m area with {params.NUM_GNS} GNs.")
 
     required_data_per_gn = 100 * 1e6 # 100 Mbits
