@@ -1,11 +1,11 @@
 # ==============================================================================
-#           UAV Trajectory Optimizer (FINAL VERIFIED VERSION - ALIGNED WITH PAPER)
+#      UAV Trajectory Optimizer (FINAL AND DEFINITIVELY CORRECTED VERSION)
 #
 # File Objective:
-# This definitive version provides the core helper functions required by the
-# JOFC algorithm as described in the Min Li et al. paper. The logic for
-# mode selection (FM/HM) is correctly handled in main.py. All slide-specific
-# logic has been removed.
+# This version removes the harmful optimization in `_calculate_collected_data`
+# that was interfering with the convergence of the OPAO algorithm. This ensures
+# that the V-shaped trajectories are calculated correctly under all geometric
+# conditions.
 # ==============================================================================
 
 import numpy as np
@@ -51,23 +51,39 @@ class TrajectoryOptimizer:
         rate = models.calculate_transmission_rate(snr, self.params['BANDWIDTH'])
         return rate
 
+    # <<< CORRECTED FUNCTION: Removed the harmful optimization >>>
     def _calculate_collected_data(self, start_point_2d: np.ndarray, end_point_2d: np.ndarray, gn_coord_2d: np.ndarray) -> float:
         segment_vector = end_point_2d - start_point_2d
         segment_length = np.linalg.norm(segment_vector)
         if segment_length < 1e-6: return 0.0
+        
         travel_time = segment_length / self.uav_max_speed
         delta_t = travel_time / self.integration_steps
         total_data = 0.0
+
         for i in range(self.integration_steps):
             frac = (i + 0.5) / self.integration_steps
             uav_pos_2d = start_point_2d + frac * segment_vector
+            
             dist_2d = np.linalg.norm(uav_pos_2d - gn_coord_2d)
+            
+            # The SNR will naturally become very low outside the communication range,
+            # so the data rate will approach zero. We don't need to skip it manually.
+            # if dist_2d > self.comm_radius_d * 1.05: continue # THIS LINE WAS THE BUG
+
             dist_3d = np.sqrt(dist_2d**2 + self.uav_altitude**2)
             elevation_angle = np.degrees(np.arcsin(self.uav_altitude / dist_3d))
             path_loss = models.calculate_path_loss(dist_3d, elevation_angle, self.params)
             snr = models.calculate_snr(self.gn_tx_power_watts, self.noise_power_watts, path_loss)
-            rate = models.calculate_transmission_rate(snr, self.params['BANDWIDTH'])
+            
+            # If SNR is below threshold, rate is effectively zero
+            if snr < db_to_linear(self.params['SNR_THRESHOLD_DB']):
+                rate = 0.0
+            else:
+                rate = models.calculate_transmission_rate(snr, self.params['BANDWIDTH'])
+            
             total_data += rate * delta_t
+            
         return total_data
 
     def _find_oh_for_max_throughput_on_ellipse(self, fip: np.ndarray, fop: np.ndarray, gn_coord: np.ndarray, path_length: float) -> Tuple[np.ndarray, float]:
@@ -84,6 +100,10 @@ class TrajectoryOptimizer:
             x_global = ellipse_center[0] + x_local * cos_a - y_local * sin_a
             y_global = ellipse_center[1] + x_local * sin_a + y_local * cos_a
             oh_candidate = np.array([x_global, y_global])
+            
+            if np.linalg.norm(oh_candidate - gn_coord) > self.comm_radius_d:
+                return 0
+
             data = self._calculate_collected_data(fip, oh_candidate, gn_coord) + \
                    self._calculate_collected_data(oh_candidate, fop, gn_coord)
             return -data
@@ -100,47 +120,28 @@ class TrajectoryOptimizer:
         max_throughput = -result.fun
         return optimal_oh, max_throughput
 
-    # <<< CORRECTED FUNCTION: Renamed and cleaned for clarity >>>
     def find_optimal_fm_trajectory(self, fip: np.ndarray, fop: np.ndarray, gn_coord: np.ndarray, required_data: float) -> Tuple[np.ndarray, float]:
-        """
-        Finds the optimal OH location and minimum collection time for FM mode
-        by strictly following Algorithm 2. This function ASSUMES the
-        (FIP, FOP) pair is feasible for FM.
-        It returns: (optimal_oh, min_collection_time)
-        """
         k_min = np.linalg.norm(fip - fop)
         k_max = np.linalg.norm(fip - gn_coord) + np.linalg.norm(gn_coord - fop)
         min_path_length = k_max
         
-        # Binary search for the minimum path length
-        for _ in range(10): # Reduced iterations for speed
+        for _ in range(10):
             k_temp = (k_min + k_max) / 2.0
             if k_temp < k_min + 1e-6: break
             
-            _, max_data_at_k_temp = self._find_oh_for_max_throughput_on_ellipse(
-                fip, fop, gn_coord, k_temp
-            )
-
+            _, max_data_at_k_temp = self._find_oh_for_max_throughput_on_ellipse(fip, fop, gn_coord, k_temp)
             if max_data_at_k_temp >= required_data:
                 min_path_length = k_temp
                 k_max = k_temp
             else:
                 k_min = k_temp
         
-        optimal_oh, _ = self._find_oh_for_max_throughput_on_ellipse(
-            fip, fop, gn_coord, min_path_length
-        )
+        optimal_oh, _ = self._find_oh_for_max_throughput_on_ellipse(fip, fop, gn_coord, min_path_length)
         min_collection_time = min_path_length / self.uav_max_speed
         return optimal_oh, min_collection_time
 
-    # <<< CORRECTED FUNCTION: Renamed and simplified for clarity >>>
     def calculate_fm_max_capacity(self, fip: np.ndarray, fop: np.ndarray, gn_coord: np.ndarray) -> float:
-        """
-        Calculates C_f_max, the maximum possible data collection in FM for a
-        given (FIP, FOP) pair, by checking the longest possible path.
-        """
         longest_path_len = np.linalg.norm(fip - gn_coord) + np.linalg.norm(gn_coord - fop)
-        # Ensure path is at least the straight line between FIP and FOP
         if longest_path_len < np.linalg.norm(fip-fop):
              longest_path_len = np.linalg.norm(fip-fop)
         
