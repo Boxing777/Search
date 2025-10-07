@@ -32,7 +32,7 @@ AREA_HEIGHT = 3000.0 # meters
 
 
 # The total number of Ground Nodes (GNs) that need their data collected (N).
-NUM_GNS =6 # integer
+NUM_GNS =4 # integer
 
 # The total number of Unmanned Aerial Vehicles (UAVs) for the mission (M).
 NUM_UAVS = 1 # integer
@@ -95,7 +95,7 @@ SNR_THRESHOLD_DB = 2.6 # dB (gamma_thresh)
 
 # The path loss exponent (eta). Note: The paper's Table I lists eta=1, which
 # is followed here, but free-space path loss typically uses an exponent of 2.
-PATH_LOSS_EXPONENT = 1.0 # dimensionless
+PATH_LOSS_EXPONENT = 1.2 # dimensionless
 
 # The average additional path loss for Line-of-Sight (LoS) links (xi_LoS).
 LOS_ADDITIONAL_LOSS_DB = 3.0 # dB
