@@ -129,7 +129,7 @@ SCALING_FACTOR_B = 0.5 # (b)
 
 # --- For Trajectory Optimizer (Algorithms 2 & 3) ---
 # Step size 'k' for discretizing the search space for FIP and FOP in JOFC.
-JOFC_GRID_STEP_SIZE = 10.0 # meters
+JOFC_GRID_STEP_SIZE = 30.0 # meters
 
 # The number of discrete steps 'K' to approximate the integral for calculating
 # total collected data (Appendix C, equation 19).
