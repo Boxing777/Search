@@ -9,3 +9,6 @@
 # IDE configuration files
 .vscode/
 .idea/
+
+# ignore simulation results
+simulation_results/

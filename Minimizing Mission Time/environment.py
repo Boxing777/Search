@@ -2,29 +2,31 @@
 #                      Simulation Environment Generation
 #
 # File Objective:
-# This file establishes the physical simulation world, ensuring that all Ground
-# Nodes and their communication ranges are fully contained within the defined area.
+# This file establishes the physical simulation world, ensuring all GNs and
+# their communication ranges are fully contained within the area and do not
+# cover the Data Center.
 # ==============================================================================
 
 # Import necessary libraries
 import numpy as np
-from typing import Optional, Tuple
+from typing import Optional, List
 
 # --- Core Functionality ---
 
 def generate_gns(num_gns: int, area_width: float, area_height: float, 
-                   margin: float = 0.0, seed: Optional[int] = None) -> np.ndarray:
+                   margin: float, data_center_pos: np.ndarray, 
+                   seed: Optional[int] = None) -> np.ndarray:
     """
-    Generates 2D coordinates for Ground Nodes within a constrained area.
-
-    The placement is random and uniform, but constrained by a margin to ensure
-    that circles of radius 'margin' around the GNs do not exit the main area.
+    Generates 2D coordinates for GNs with two constraints:
+    1. GNs and their communication range are within the simulation area.
+    2. GNs' communication ranges do not cover the data center.
 
     Args:
         num_gns (int): The total number of Ground Nodes (N).
         area_width (float): The width of the main area.
         area_height (float): The height of the main area.
-        margin (float, optional): The safety margin from the edges. Defaults to 0.0.
+        margin (float): The safety margin from edges and data center (comm_radius).
+        data_center_pos (np.ndarray): The coordinates of the data center.
         seed (Optional[int], optional): A seed for the random number generator.
 
     Returns:
@@ -33,20 +35,32 @@ def generate_gns(num_gns: int, area_width: float, area_height: float,
     if seed is not None:
         np.random.seed(seed)
 
-    # <<< MODIFIED: Constrain the generation area by the margin >>>
-    # GNs will be generated in [margin, width - margin] and [margin, height - margin]
-    # Add a check to prevent negative generation range if margin is too large
+    gn_positions: List[np.ndarray] = []
+    
+    # Define the valid generation area, constrained by the margin
     low_x, high_x = margin, area_width - margin
     low_y, high_y = margin, area_height - margin
 
     if low_x >= high_x or low_y >= high_y:
         raise ValueError(f"Margin ({margin}) is too large for the area dimensions ({area_width}x{area_height}). Cannot generate GNs.")
 
-    x_coords = np.random.uniform(low_x, high_x, num_gns)
-    y_coords = np.random.uniform(low_y, high_y, num_gns)
-
-    gn_positions = np.column_stack((x_coords, y_coords))
-    return gn_positions
+    # Generate GNs one by one, checking the data center distance constraint
+    while len(gn_positions) < num_gns:
+        # Generate a candidate position
+        candidate_pos = np.array([
+            np.random.uniform(low_x, high_x),
+            np.random.uniform(low_y, high_y)
+        ])
+        
+        # <<< NEW CONSTRAINT CHECK >>>
+        # Calculate the distance from the candidate GN to the data center
+        distance_to_dc = np.linalg.norm(candidate_pos - data_center_pos)
+        
+        # If the distance is greater than the margin (comm_radius), accept the point
+        if distance_to_dc > margin:
+            gn_positions.append(candidate_pos)
+    
+    return np.array(gn_positions)
 
 
 # --- Class Structure for Environment Management ---
@@ -55,13 +69,13 @@ class SimulationEnvironment:
     """
     A container for all static elements of the simulation world.
     """
-    def __init__(self, params, comm_radius: float): # <<< MODIFIED: Added comm_radius
+    def __init__(self, params, comm_radius: float):
         """
         Constructs the SimulationEnvironment.
 
         Args:
             params: A module or object containing simulation parameters.
-            comm_radius (float): The communication radius, used as a margin for GN placement.
+            comm_radius (float): The communication radius, used as a margin.
         """
         self.area_width: float = params.AREA_WIDTH
         self.area_height: float = params.AREA_HEIGHT
@@ -69,13 +83,15 @@ class SimulationEnvironment:
         
         seed = getattr(params, 'RANDOM_SEED', None)
 
-        # <<< MODIFICATION: Pass the communication radius as the margin >>>
-        print(f"Generating GNs with a safety margin of {comm_radius:.2f} meters...")
+        print(f"Generating GNs with a safety margin of {comm_radius:.2f} meters from edges and data center...")
+        
+        # <<< MODIFICATION: Pass data_center_pos to the generator >>>
         self.gn_positions: np.ndarray = generate_gns(
             num_gns=params.NUM_GNS,
             area_width=self.area_width,
             area_height=self.area_height,
-            margin=comm_radius, # Use the radius as the safety margin
+            margin=comm_radius,
+            data_center_pos=self.data_center_pos, # Pass data center position
             seed=seed
         )
 

@@ -62,33 +62,24 @@ def plot_gn_environment(ax: plt.Axes, gns: np.ndarray, data_center_pos: Tuple[fl
 
 def plot_initial_routes(gns: np.ndarray, data_center_pos: Tuple[float, float],
                         uav_assignments: Dict[str, List[int]], area_width: float,
-                        area_height: float, title: str = "Initial UAV Routes (MTSP Solution)"):
-    """
-    Visualizes the initial straight-line paths with direction arrows.
-    """
+                        area_height: float, save_path: str = None, title: str = "Initial UAV Routes (MTSP Solution)"):
     fig, ax = plt.subplots(figsize=(12, 12))
     plot_gn_environment(ax, gns, data_center_pos, area_width, area_height)
-
     for i, (uav_id, route_indices) in enumerate(uav_assignments.items()):
-        if not route_indices:
-            continue
-            
+        if not route_indices: continue
         color = UAV_COLORS[i % len(UAV_COLORS)]
-        path_coords = [data_center_pos] + [gns[idx] for idx in route_indices] + [data_center_pos]
-        path_coords = np.array(path_coords)
-        
-        ax.plot(path_coords[:, 0], path_coords[:, 1], color=color, linestyle='--',
-                marker='.', markersize=8, label=f'{uav_id} Path')
-        
+        path_coords = np.array([data_center_pos] + [gns[idx] for idx in route_indices] + [data_center_pos])
+        ax.plot(path_coords[:, 0], path_coords[:, 1], color=color, linestyle='--', marker='.', markersize=8, label=f'{uav_id} Path')
         for j in range(len(path_coords) - 1):
-            start_point = path_coords[j]
-            end_point = path_coords[j+1]
-            _add_arrow_to_line(ax, start_point, end_point, color)
-
+            _add_arrow_to_line(ax, path_coords[j], path_coords[j+1], color)
     ax.set_title(title)
     ax.legend()
     plt.tight_layout()
-    plt.show()
+    if save_path:
+        plt.savefig(save_path)
+        plt.close(fig) # Close the figure to free up memory
+    else:
+        plt.show()
 
 
 # <<< RENAMED & MODIFIED FUNCTION TO HANDLE COMPARISON >>>
@@ -96,64 +87,42 @@ def plot_final_comparison_trajectories(gns: np.ndarray, data_center_pos: Tuple[f
                                        v_shaped_trajectories: Dict[str, List[Dict]],
                                        convex_trajectories: Dict[str, np.ndarray],
                                        area_width: float, area_height: float, comm_radius: float,
-                                       title: str = "Final Optimized Trajectories Comparison"):
-    """
-    Visualizes and compares the V-shaped and convex optimal trajectories.
-    This version adds sequence numbers to indicate the order of service.
-    """
+                                       save_path: str = None, title: str = "Final Optimized Trajectories Comparison"):
     fig, ax = plt.subplots(figsize=(14, 14))
     plot_gn_environment(ax, gns, data_center_pos, area_width, area_height, comm_radius)
-
-    # --- Plot V-Shaped Trajectories (Time-Optimal) with Sequence Numbers ---
     for i, (uav_id, segments) in enumerate(v_shaped_trajectories.items()):
-        color = UAV_COLORS[i % len(UAV_COLORS)] # Use different colors for different UAVs
-        
-        # Create a single legend entry for this path type
+        color = UAV_COLORS[i % len(UAV_COLORS)]
         ax.plot([], [], color=color, linestyle='-', linewidth=2.0, label=f'{uav_id} V-Shaped (Time-Optimal)')
-        
-        sequence_counter = 1 # Initialize sequence counter for each UAV
-        
+        sequence_counter = 1
         for segment in segments:
             if segment['type'] == 'flight':
                 start, end = np.array(segment['start']), np.array(segment['end'])
                 ax.plot([start[0], end[0]], [start[1], end[1]], color=color, linestyle='-', linewidth=1.5, zorder=2)
-                # Add arrow to flight segments to show direction
                 _add_arrow_to_line(ax, start, end, color)
-
             elif segment['type'] == 'collection':
-                fip = np.array(segment['fip'])
-                oh = np.array(segment['oh'])
-                fop = np.array(segment['fop'])
-                
+                fip, oh, fop = np.array(segment['fip']), np.array(segment['oh']), np.array(segment['fop'])
                 v_path = np.array([fip, oh, fop])
                 ax.plot(v_path[:, 0], v_path[:, 1], color=color, linestyle='-', linewidth=1.5, marker='.', markersize=4, zorder=2)
-                
-                # Add a sequence number label near the OH point
                 ax.text(oh[0] + 50, oh[1] + 50, str(sequence_counter), color='white', 
                         fontsize=10, fontweight='bold', ha='center', va='center',
                         bbox=dict(facecolor=color, alpha=0.8, boxstyle='circle,pad=0.2'))
-                
                 if segment.get('mode') == 'HM':
                     ax.plot(oh[0], oh[1], 'o', color=color, markersize=8, markeredgecolor='black')
-                
                 sequence_counter += 1
-
-    # --- Plot Convex Optimal Trajectories (Shortest Path) ---
     for i, (uav_id, path) in enumerate(convex_trajectories.items()):
-        # Use a different color scheme to avoid confusion, maybe based on UAV index but darker/lighter
-        color = 'darkblue' if i==0 else 'darkgreen' 
-        path_np = np.array(path)
-        if len(path_np) > 0:
-            ax.plot(path_np[:, 0], path_np[:, 1], color=color, linestyle='--', linewidth=2.0, marker='x', markersize=6, label=f'{uav_id} Convex (Shortest Path)')
-
-    # Create a consolidated legend to avoid duplicate labels
+        color = 'darkblue' if i==0 else 'darkgreen'
+        if len(path) > 0:
+            ax.plot(path[:, 0], path[:, 1], color=color, linestyle='--', linewidth=2.0, marker='x', markersize=6, label=f'{uav_id} Convex (Shortest Path)')
     handles, labels = ax.get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
     ax.legend(by_label.values(), by_label.keys(), fontsize='large')
-    
     ax.set_title(title)
     plt.tight_layout()
-    plt.show()
+    if save_path:
+        plt.savefig(save_path)
+        plt.close(fig) # Close the figure to free up memory
+    else:
+        plt.show()
 
 # Deprecated wrapper for backward compatibility. 
 # It now calls the new comparison function.
