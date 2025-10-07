@@ -226,3 +226,4 @@ class MissionAllocationGA:
         for uav, route in result['assignment'].items():
             print(f"  {uav}: Route {route}")
         return result
+    
