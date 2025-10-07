@@ -41,35 +41,46 @@ def calculate_los_probability(elevation_angle_degrees: float, a: float, b: float
 
 def calculate_path_loss(distance_3d: float, elevation_angle_degrees: float, params: Dict) -> float:
     """
-    Calculates the total path loss in decibels (dB) using Equation (3).
+    Calculates the total path loss in a LINEAR scale (not dB), matching Equation (3). <<< MODIFIED
 
-    This is calculated as the sum of Free Space Path Loss (FSPL) and an
-    average additional loss based on LoS/NLoS conditions.
+    Formula: L_path = ( (4*pi*fc / c) * l_ij )^eta * (PLoS*(xi_LoS-xi_NLoS)+xi_NLoS)
+    Note: The paper names this L_dB, but uses it as a linear value in Eq (2).
+          We return the linear value to be used directly in calculate_snr.
 
     Args:
         distance_3d (float): The 3D Euclidean distance (l_ij) in meters.
         elevation_angle_degrees (float): The elevation angle in degrees (for P_LoS).
-        params (Dict): A dictionary containing communication parameters like
-                       CARRIER_FREQUENCY, LOS_PROBABILITY_PARAMS, etc.
+        params (Dict): A dictionary containing communication parameters.
 
     Returns:
-        float: The total path loss in decibels (dB).
+        float: The total path loss in a linear scale.
     """
     fc = params['CARRIER_FREQUENCY']
-    fspl_db = 20 * np.log10(distance_3d) + 20 * np.log10(fc) + 20 * np.log10((4 * np.pi) / SPEED_OF_LIGHT)
+    eta = params['PATH_LOSS_EXPONENT']  # Should be 1.0 according to the paper
 
+    # Part 1: Free-space path loss component in linear scale
+    # Strictly following the paper's formula (3) where eta is applied.
+    fspl_linear_base = (4 * np.pi * fc / SPEED_OF_LIGHT) ** eta
+    fspl_linear = fspl_linear_base * (distance_3d ** eta)
+
+    # Part 2: Average additional loss component in linear scale
     los_params = params['LOS_PROBABILITY_PARAMS']
     p_los = calculate_los_probability(elevation_angle_degrees, los_params['a'], los_params['beta'])
 
-    eta_los = params['LOS_ADDITIONAL_LOSS_DB']
-    eta_nlos = params['NLOS_ADDITIONAL_LOSS_DB']
-    additional_loss_db = p_los * eta_los + (1 - p_los) * eta_nlos
+    # Convert additional losses from dB to linear scale for calculation
+    xi_los_linear = 10**(params['LOS_ADDITIONAL_LOSS_DB'] / 10.0)
+    xi_nlos_linear = 10**(params['NLOS_ADDITIONAL_LOSS_DB'] / 10.0)
+    
+    # Calculate the average additional loss in linear scale
+    additional_loss_linear = p_los * (xi_los_linear - xi_nlos_linear) + xi_nlos_linear
+    
+    # Total path loss in linear scale is the product of the two components
+    total_path_loss_linear = fspl_linear * additional_loss_linear
 
-    total_path_loss_db = fspl_db + additional_loss_db
+    return total_path_loss_linear
 
-    return total_path_loss_db
 
-def calculate_snr(gn_transmit_power_watts: float, total_noise_power_watts: float, path_loss_db: float) -> float:
+def calculate_snr(gn_transmit_power_watts: float, total_noise_power_watts: float, path_loss_linear: float) -> float:
     """
     Calculates the Signal-to-Noise Ratio (SNR) in a linear scale (not dB).
 
@@ -78,13 +89,15 @@ def calculate_snr(gn_transmit_power_watts: float, total_noise_power_watts: float
     Args:
         gn_transmit_power_watts (float): The GN's transmission power (Pt) in Watts.
         total_noise_power_watts (float): Total noise power (sigma^2) in Watts.
-        path_loss_db (float): The path loss value in dB from calculate_path_loss.
+        path_loss_linear (float): The path loss value in a linear scale from calculate_path_loss. <<< MODIFIED
 
     Returns:
         float: The SNR in a linear scale.
     """
-    linear_path_loss = 10**(path_loss_db / 10.0)
-    snr = gn_transmit_power_watts / (total_noise_power_watts * linear_path_loss)
+    if path_loss_linear <= 0: # <<< MODIFIED (Added boundary check)
+        return 0.0
+    # The input path_loss_linear is already in linear scale, no conversion needed.
+    snr = gn_transmit_power_watts / (total_noise_power_watts * path_loss_linear)
     return snr
 
 def calculate_transmission_rate(snr_linear: float, bandwidth_hz: float) -> float:
@@ -165,7 +178,7 @@ def calculate_initial_mission_cost(gn_coord_prev: np.ndarray, gn_coord_curr: np.
         b (float): The scaling factor for the collection mission (SCALING_FACTOR_B).
 
     Returns:
-        float: The dimensionless mission cost (??_ij) for this path segment.
+        float: The dimensionless mission cost (£F_ij) for this path segment.
     """
     distance = np.linalg.norm(gn_coord_curr - gn_coord_prev)
 
