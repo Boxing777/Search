@@ -178,7 +178,7 @@ def calculate_initial_mission_cost(gn_coord_prev: np.ndarray, gn_coord_curr: np.
         b (float): The scaling factor for the collection mission (SCALING_FACTOR_B).
 
     Returns:
-        float: The dimensionless mission cost (£F_ij) for this path segment.
+        float: The dimensionless mission cost (Î“_ij) for this path segment.
     """
     distance = np.linalg.norm(gn_coord_curr - gn_coord_prev)
 

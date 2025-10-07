@@ -98,31 +98,50 @@ def plot_final_comparison_trajectories(gns: np.ndarray, data_center_pos: Tuple[f
                                        area_width: float, area_height: float, comm_radius: float,
                                        title: str = "Final Optimized Trajectories Comparison"):
     """
-    Visualizes and compares the V-shaped and convex optimal trajectories on one plot.
+    Visualizes and compares the V-shaped and convex optimal trajectories.
+    This version adds sequence numbers to indicate the order of service.
     """
     fig, ax = plt.subplots(figsize=(14, 14))
     plot_gn_environment(ax, gns, data_center_pos, area_width, area_height, comm_radius)
 
-    # --- Plot V-Shaped Trajectories (Time-Optimal) ---
+    # --- Plot V-Shaped Trajectories (Time-Optimal) with Sequence Numbers ---
     for i, (uav_id, segments) in enumerate(v_shaped_trajectories.items()):
-        color = 'red' # Use red for the V-shaped path
+        color = UAV_COLORS[i % len(UAV_COLORS)] # Use different colors for different UAVs
         
         # Create a single legend entry for this path type
         ax.plot([], [], color=color, linestyle='-', linewidth=2.0, label=f'{uav_id} V-Shaped (Time-Optimal)')
-
+        
+        sequence_counter = 1 # Initialize sequence counter for each UAV
+        
         for segment in segments:
             if segment['type'] == 'flight':
                 start, end = np.array(segment['start']), np.array(segment['end'])
                 ax.plot([start[0], end[0]], [start[1], end[1]], color=color, linestyle='-', linewidth=1.5, zorder=2)
+                # Add arrow to flight segments to show direction
+                _add_arrow_to_line(ax, start, end, color)
+
             elif segment['type'] == 'collection':
-                v_path = np.array([segment['fip'], segment['oh'], segment['fop']])
+                fip = np.array(segment['fip'])
+                oh = np.array(segment['oh'])
+                fop = np.array(segment['fop'])
+                
+                v_path = np.array([fip, oh, fop])
                 ax.plot(v_path[:, 0], v_path[:, 1], color=color, linestyle='-', linewidth=1.5, marker='.', markersize=4, zorder=2)
+                
+                # Add a sequence number label near the OH point
+                ax.text(oh[0] + 50, oh[1] + 50, str(sequence_counter), color='white', 
+                        fontsize=10, fontweight='bold', ha='center', va='center',
+                        bbox=dict(facecolor=color, alpha=0.8, boxstyle='circle,pad=0.2'))
+                
                 if segment.get('mode') == 'HM':
-                    ax.plot(segment['oh'][0], segment['oh'][1], 'o', color=color, markersize=8, markeredgecolor='black')
+                    ax.plot(oh[0], oh[1], 'o', color=color, markersize=8, markeredgecolor='black')
+                
+                sequence_counter += 1
 
     # --- Plot Convex Optimal Trajectories (Shortest Path) ---
     for i, (uav_id, path) in enumerate(convex_trajectories.items()):
-        color = 'blue' # Use blue for the convex path
+        # Use a different color scheme to avoid confusion, maybe based on UAV index but darker/lighter
+        color = 'darkblue' if i==0 else 'darkgreen' 
         path_np = np.array(path)
         if len(path_np) > 0:
             ax.plot(path_np[:, 0], path_np[:, 1], color=color, linestyle='--', linewidth=2.0, marker='x', markersize=6, label=f'{uav_id} Convex (Shortest Path)')

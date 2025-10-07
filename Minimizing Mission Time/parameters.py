@@ -69,7 +69,7 @@ UAV_FLIGHT_POWER_PARAMS: Dict[str, float] = {
 }
 
 # The constant circuit power consumed by the UAV's communication hardware (Pc).
-UAV_CIRCUIT_POWER = 1.0 # Watts
+UAV_CIRCUIT_POWER = 0.05 # Watts
 
 # ==============================================================================
 # Section 3: Wireless Communication Parameters
