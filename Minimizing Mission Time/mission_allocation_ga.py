@@ -1,12 +1,12 @@
 # ==============================================================================
-#      Mission Allocation via Genetic Algorithm (Paper-Faithful Implementation)
+#      Mission Allocation via Genetic Algorithm (Final Paper-Faithful Version)
 #
 # File Objective:
-# This version is refactored to align more closely with the paper's description
-# of the allocation problem. The GA's primary role is to evolve the *assignment*
-# of GNs to UAVs. The routing within each UAV's assigned set of GNs is determined
-# dynamically during fitness evaluation using a simple nearest-neighbor heuristic,
-# representing a faithful implementation of the paper's high-level model.
+# This final version implements the interpretation that the GA solves for both
+# allocation and routing simultaneously. It uses a permutation-based chromosome
+# with dividers, which is a standard representation for MTSP, and employs
+# compatible evolutionary operators (Order Crossover and Swap Mutation) to evolve
+# complete, ordered tours for all UAVs.
 # ==============================================================================
 
 import numpy as np
@@ -17,14 +17,11 @@ import models
 
 class MissionAllocationGA:
     """
-    Manages the Genetic Algorithm to find the best mission assignment for UAVs,
-    staying faithful to the paper's model.
+    Manages the GA for mission assignment and routing, faithful to the MTSP model.
     """
 
     def __init__(self, gns: np.ndarray, num_uavs: int, data_center_pos: np.ndarray, transmission_radius_d: float, params: Dict):
-        """
-        Initializes the GA solver.
-        """
+        """Initializes the GA solver for the combined allocation and routing problem."""
         # Problem definition
         self.gns = gns
         self.num_gns = len(gns)
@@ -50,77 +47,80 @@ class MissionAllocationGA:
 
     def _create_initial_population(self):
         """
-        Creates the initial population. Each chromosome represents an assignment of
-        GNs to UAVs. Gene at index `i` holds the UAV index for GN `i`.
+        Generates the first generation. A chromosome is a permutation of all
+        GN indices and M-1 dividers, representing a complete ordered solution.
         """
         self.population = []
+        # Edge case: If there's only 1 UAV, there are no dividers.
+        if self.num_uavs <= 1:
+            base_chromosome = list(range(self.num_gns))
+        else:
+            # GN indices are 0 to N-1. Dividers are -1 to -(M-1).
+            base_chromosome = list(range(self.num_gns)) + list(range(-1, -self.num_uavs, -1))
+        
         for _ in range(self.population_size):
-            # For each GN, assign a random UAV
-            chromosome = [random.randint(0, self.num_uavs - 1) for _ in range(self.num_gns)]
-            self.population.append(chromosome)
+            shuffled_chromosome = random.sample(base_chromosome, len(base_chromosome))
+            self.population.append(shuffled_chromosome)
 
-    def _get_routes_from_chromosome(self, chromosome: List[int]) -> Dict[int, List[int]]:
-        """Decodes a chromosome into a dictionary of GN lists for each UAV."""
+    def _decode_chromosome(self, chromosome: List[int]) -> Dict[int, List[int]]:
+        """
+        Parses a chromosome with dividers into a dictionary of ordered routes for each UAV.
+        """
         routes = {i: [] for i in range(self.num_uavs)}
-        for gn_idx, uav_idx in enumerate(chromosome):
-            routes[uav_idx].append(gn_idx)
+        if self.num_uavs <= 1:
+            routes[0] = [gene for gene in chromosome if gene >= 0]
+            return routes
+
+        current_uav_idx = 0
+        current_route = []
+        
+        for gene in chromosome:
+            if gene < 0: # It's a divider
+                if current_uav_idx < self.num_uavs:
+                    routes[current_uav_idx] = current_route
+                current_uav_idx += 1
+                current_route = []
+            else: # It's a GN index
+                current_route.append(gene)
+        
+        # Assign the last route after the last divider
+        if current_uav_idx < self.num_uavs:
+            routes[current_uav_idx] = current_route
+        
         return routes
 
-    def _find_nn_tour_and_cost(self, gn_indices: List[int], start_pos: np.ndarray) -> Tuple[List[int], float]:
-        """
-        Calculates the tour cost for a set of GNs using a nearest-neighbor heuristic.
-        This is used within the fitness function to determine the route.
-        """
-        if not gn_indices:
-            return [], 0.0
-
-        tour = []
-        total_cost = 0.0
-        
-        # Create a dictionary of coordinates for the GNs in this tour
-        gn_coords_map = {idx: self.gns[idx] for idx in gn_indices}
-        
-        # Find the first GN closest to the starting position (data center)
-        current_pos = start_pos
-        unvisited_indices = set(gn_indices)
-        
-        # Find the closest GN to the data center to start the tour
-        closest_gn_idx = min(unvisited_indices, key=lambda idx: np.linalg.norm(gn_coords_map[idx] - current_pos))
-        
-        # Calculate cost from data center to the first GN
-        total_cost += models.calculate_initial_mission_cost(
-            current_pos, gn_coords_map[closest_gn_idx], self.transmission_radius_d, self.scaling_a, self.scaling_b
-        )
-        current_pos = gn_coords_map[closest_gn_idx]
-        tour.append(closest_gn_idx)
-        unvisited_indices.remove(closest_gn_idx)
-
-        # Sequentially visit the nearest unvisited GN
-        while unvisited_indices:
-            next_gn_idx = min(unvisited_indices, key=lambda idx: np.linalg.norm(gn_coords_map[idx] - current_pos))
-            
-            total_cost += models.calculate_initial_mission_cost(
-                current_pos, gn_coords_map[next_gn_idx], self.transmission_radius_d, self.scaling_a, self.scaling_b
-            )
-            current_pos = gn_coords_map[next_gn_idx]
-            tour.append(next_gn_idx)
-            unvisited_indices.remove(next_gn_idx)
-
-        # Add the cost to return to the data center
-        total_cost += models.calculate_initial_mission_cost(
-            current_pos, self.data_center_pos, self.transmission_radius_d, self.scaling_a, self.scaling_b
-        )
-        
-        return tour, total_cost
-
     def _calculate_fitness(self, chromosome: List[int]) -> float:
-        """Evaluates fitness: the maximum mission cost among all UAVs."""
-        routes = self._get_routes_from_chromosome(chromosome)
+        """
+        Evaluates the fitness of a single chromosome (lower is better).
+        The order is taken directly from the chromosome.
+        """
+        routes = self._decode_chromosome(chromosome)
         all_tour_costs = []
 
         for uav_idx in range(self.num_uavs):
-            gn_indices_for_uav = routes[uav_idx]
-            _, tour_cost = self._find_nn_tour_and_cost(gn_indices_for_uav, self.data_center_pos)
+            tour_cost = 0.0
+            route = routes.get(uav_idx, [])
+            
+            if not route:
+                all_tour_costs.append(0.0)
+                continue
+
+            # Cost from data center to the first GN in the evolved order
+            tour_cost += models.calculate_initial_mission_cost(
+                self.data_center_pos, self.gns[route[0]], self.transmission_radius_d, self.scaling_a, self.scaling_b
+            )
+            
+            # Cost between GNs according to the evolved order
+            for i in range(len(route) - 1):
+                tour_cost += models.calculate_initial_mission_cost(
+                    self.gns[route[i]], self.gns[route[i+1]], self.transmission_radius_d, self.scaling_a, self.scaling_b
+                )
+
+            # Cost from the last GN back to the data center
+            tour_cost += models.calculate_initial_mission_cost(
+                self.gns[route[-1]], self.data_center_pos, self.transmission_radius_d, self.scaling_a, self.scaling_b
+            )
+            
             all_tour_costs.append(tour_cost)
 
         return max(all_tour_costs) if all_tour_costs else 0.0
@@ -133,23 +133,48 @@ class MissionAllocationGA:
         return tournament[winner_index]
 
     def _crossover(self, parent1: List[int], parent2: List[int]) -> Tuple[List[int], List[int]]:
-        """Performs uniform crossover."""
-        child1, child2 = parent1[:], parent2[:]
-        for i in range(self.num_gns):
-            if random.random() < 0.5:
-                child1[i], child2[i] = child2[i], child1[i]
+        """
+        Performs Order Crossover (OX1), which is suitable for permutation-based encodings.
+        It preserves the relative order of genes from the parents.
+        """
+        size = len(parent1)
+        child1, child2 = [None] * size, [None] * size
+        
+        start, end = sorted(random.sample(range(size), 2))
+        
+        child1[start:end] = parent1[start:end]
+        child2[start:end] = parent2[start:end]
+        
+        genes1_in_child = set(child1[start:end])
+        genes2_in_child = set(child2[start:end])
+
+        p2_idx, c1_idx = end, end
+        while None in child1:
+            gene = parent2[p2_idx % size]
+            if gene not in genes1_in_child:
+                child1[c1_idx % size] = gene
+                c1_idx += 1
+            p2_idx += 1
+
+        p1_idx, c2_idx = end, end
+        while None in child2:
+            gene = parent1[p1_idx % size]
+            if gene not in genes2_in_child:
+                child2[c2_idx % size] = gene
+                c2_idx += 1
+            p1_idx += 1
+            
         return child1, child2
 
     def _mutation(self, chromosome: List[int]) -> List[int]:
-        """Mutates a chromosome by changing the assignment of a random GN."""
-        gn_to_mutate = random.randint(0, self.num_gns - 1)
-        new_uav_assignment = random.randint(0, self.num_uavs - 1)
-        chromosome[gn_to_mutate] = new_uav_assignment
+        """Performs swap mutation, which can change order or allocation."""
+        idx1, idx2 = random.sample(range(len(chromosome)), 2)
+        chromosome[idx1], chromosome[idx2] = chromosome[idx2], chromosome[idx1]
         return chromosome
 
     def solve(self) -> Dict:
-        """Runs the entire GA process."""
-        print("Starting Genetic Algorithm for mission allocation...")
+        """Runs the entire GA process to evolve both allocation and routes."""
+        print("Starting Genetic Algorithm for mission allocation and routing...")
         self._create_initial_population()
 
         for gen in range(self.num_iterations):
@@ -166,7 +191,7 @@ class MissionAllocationGA:
 
             next_generation = []
             best_current_idx = np.argmin(fitness_scores)
-            next_generation.append(self.population[best_current_idx])
+            next_generation.append(self.population[best_current_idx]) # Elitism
             
             while len(next_generation) < self.population_size:
                 parent1 = self._selection()
@@ -188,14 +213,8 @@ class MissionAllocationGA:
 
             self.population = next_generation
 
-        # Decode the final best chromosome to get the assignment and the final ordered routes
-        final_routes_decoded = self._get_routes_from_chromosome(self.best_solution_chromosome)
-        final_assignment = {}
-        for i in range(self.num_uavs):
-            gn_indices = final_routes_decoded.get(i, [])
-            # Get the final ordered tour for this assignment
-            ordered_tour, _ = self._find_nn_tour_and_cost(gn_indices, self.data_center_pos)
-            final_assignment[f"UAV_{i}"] = ordered_tour
+        final_routes_decoded = self._decode_chromosome(self.best_solution_chromosome)
+        final_assignment = {f"UAV_{i}": final_routes_decoded.get(i, []) for i in range(self.num_uavs)}
         
         result = {
             "assignment": final_assignment,
