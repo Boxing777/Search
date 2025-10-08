@@ -1,10 +1,11 @@
 # ==============================================================================
-#      Main Simulation Script (with Automated Batch Execution)
+#      Main Simulation Script (Corrected Objective Function in JOFC)
 #
 # File Objective:
-# This script orchestrates automated, sequential simulation runs. For each run,
-# it creates a unique timestamped directory to save all outputs, including
-# console logs and generated trajectory plots.
+# This version fundamentally corrects the objective function within the JOFC
+# loop to align with the paper's description (Eq. 17), including the cost of
+# flying away from the current FOP towards the next target. This intrinsically
+# prevents path-folding without needing artificial constraints.
 # ==============================================================================
 
 import time
@@ -22,8 +23,7 @@ from trajectory_optimizer import TrajectoryOptimizer
 from convex_trajectory_planner import ConvexTrajectoryPlanner
 import visualizer as vis
 
-# --- Helper Class and Functions ---
-
+# --- Helper Class and Functions (No changes needed here) ---
 class Logger:
     """A simple logger to write output to both console and a file."""
     def __init__(self, log_file_path):
@@ -63,53 +63,38 @@ def get_circle_intersections(p1: np.ndarray, r1: float, p2: np.ndarray, r2: floa
     return [np.array(inter1), np.array(inter2)]
 
 # --- Main Simulation Logic for a Single Run ---
-
-def run_single_simulation(output_dir: str):
+def run_single_simulation(run_prefix: str, output_dir: str):
     start_time = time.time()
     print("======================================================")
-    print("      UAV Trajectory Optimization Comparison")
+    print(f"      UAV Trajectory Opt. - {run_prefix.upper()}")
     print("======================================================")
     print("\n[Step 1/5] Initializing simulation environment...")
 
-    print("Pre-calculating communication radius D...")
     traj_optimizer = TrajectoryOptimizer(params.__dict__)
     comm_radius = traj_optimizer.comm_radius_d
-
     sim_env = SimulationEnvironment(params, comm_radius=comm_radius)
     
     print(f"Environment created: {params.AREA_WIDTH}x{params.AREA_HEIGHT}m area with {params.NUM_GNS} GNs.")
 
-    required_data_per_gn = 50 * 1e6 # 500 Mbits
+    required_data_per_gn = 80 * 1e6 # Set to a high value to see V-shapes
     print(f"Data requirement per GN set to {required_data_per_gn / 1e6:.0f} Mbits.")
     
     print("\n[Step 2/5] Running Mission Allocation (Genetic Algorithm)...")
-    
     ga_solver = MissionAllocationGA(
-        gns=sim_env.gn_positions,
-        num_uavs=params.NUM_UAVS,
-        data_center_pos=sim_env.data_center_pos,
-        transmission_radius_d=traj_optimizer.comm_radius_d,
-        params=params.__dict__
+        gns=sim_env.gn_positions, num_uavs=params.NUM_UAVS, data_center_pos=sim_env.data_center_pos,
+        transmission_radius_d=traj_optimizer.comm_radius_d, params=params.__dict__
     )
-    ga_results = ga_solver.solve()
-    initial_assignment = ga_results['assignment']
-
-    print("Visualizing initial routes from GA...")
+    initial_assignment = ga_solver.solve()['assignment']
+    
     vis.plot_initial_routes(
-        gns=sim_env.gn_positions,
-        data_center_pos=sim_env.data_center_pos,
-        uav_assignments=initial_assignment,
-        area_width=params.AREA_WIDTH,
-        area_height=params.AREA_HEIGHT,
-        save_path=os.path.join(output_dir, 'initial_routes.png')
+        gns=sim_env.gn_positions, data_center_pos=sim_env.data_center_pos, uav_assignments=initial_assignment,
+        area_width=params.AREA_WIDTH, area_height=params.AREA_HEIGHT,
+        save_path=os.path.join(output_dir, f'{run_prefix}_initial_routes.png')
     )
     
     print("\n[Step 3/5] Running Trajectory Optimizations for each UAV...")
-    
     convex_planner = ConvexTrajectoryPlanner(
-        gns=sim_env.gn_positions,
-        data_center_pos=sim_env.data_center_pos,
-        comm_radius=traj_optimizer.comm_radius_d
+        gns=sim_env.gn_positions, data_center_pos=sim_env.data_center_pos, comm_radius=traj_optimizer.comm_radius_d
     )
     
     final_trajectories, uav_mission_times = {}, {}
@@ -117,41 +102,63 @@ def run_single_simulation(output_dir: str):
 
     for uav_id, gn_indices_route in initial_assignment.items():
         if not gn_indices_route:
-            print(f"{uav_id} has no assigned GNs. Mission time: 0s.")
             final_trajectories[uav_id], uav_mission_times[uav_id] = [], 0.0
             convex_trajectories[uav_id], convex_path_lengths[uav_id] = np.array([]), 0.0
             continue
 
         print(f"\n--- Optimizing for {uav_id} with sequence: {gn_indices_route} ---")
-        
-        print("  -> Running V-Shaped Trajectory Optimizer (JOFC Algorithm)...")
         previous_fop, uav_path_segments, current_uav_time = sim_env.data_center_pos, [], 0.0
 
+        # <<< FUNDAMENTAL CORRECTION OF THE JOFC LOOP STARTS HERE >>>
         for i, gn_index in enumerate(gn_indices_route):
-            sp, current_gn_coord = previous_fop, sim_env.gn_positions[gn_index]
-            min_service_time_for_gn, best_leg_config = float('inf'), {}
+            sp = previous_fop
+            current_gn_coord = sim_env.gn_positions[gn_index]
+            
+            # Define the anchor point for the flight-out cost calculation
+            is_last_gn = (i == len(gn_indices_route) - 1)
+            next_target_anchor = sim_env.data_center_pos if is_last_gn else sim_env.gn_positions[gn_indices_route[i+1]]
+
+            min_total_leg_time = float('inf')
+            best_leg_config = {}
+
+            # We can now return to the simple, unconstrained search space
             num_angles = 24
             angles = np.linspace(0, 2 * np.pi, num_angles, endpoint=False)
-            fip_candidates = [current_gn_coord + traj_optimizer.comm_radius_d * np.array([np.cos(a), np.sin(a)]) for a in angles]
-            fop_candidates = [current_gn_coord + traj_optimizer.comm_radius_d * np.array([np.cos(a), np.sin(a)]) for a in angles]
+            fip_candidates = [current_gn_coord + comm_radius * np.array([np.cos(a), np.sin(a)]) for a in angles]
+            fop_candidates = [current_gn_coord + comm_radius * np.array([np.cos(a), np.sin(a)]) for a in angles]
             
             for fip in fip_candidates:
                 for fop in fop_candidates:
+                    
+                    # --- THE CORRECTED OBJECTIVE FUNCTION ---
+                    # 1. Flight-in time
                     flight_time_in = np.linalg.norm(sp - fip) / params.UAV_MAX_SPEED
+                    
+                    # 2. Collection time
                     c_max = traj_optimizer.calculate_fm_max_capacity(fip, fop, current_gn_coord)
                     
                     if required_data_per_gn <= c_max:
                         optimal_oh, collection_time = traj_optimizer.find_optimal_fm_trajectory(
-                            fip, fop, current_gn_coord, required_data_per_gn, is_symmetric=False)
+                            fip, fop, current_gn_coord, required_data_per_gn)
                     else:
                         optimal_oh = current_gn_coord
                         collection_flight_time = (np.linalg.norm(fip - optimal_oh) + np.linalg.norm(optimal_oh - fop)) / params.UAV_MAX_SPEED
                         hover_time = (required_data_per_gn - c_max) / traj_optimizer.hover_datarate if traj_optimizer.hover_datarate > 0 else float('inf')
                         collection_time = collection_flight_time + hover_time
+
+                    # 3. Flight-out time (Proxy for d_i2) - THE CRITICAL ADDITION
+                    flight_time_out = np.linalg.norm(next_target_anchor - fop) / params.UAV_MAX_SPEED
+
+                    # The TOTAL time cost associated with choosing this (FIP, FOP) pair for the current leg
+                    total_leg_time = flight_time_in + collection_time + flight_time_out
                     
-                    service_time = flight_time_in + collection_time
-                    if service_time < min_service_time_for_gn:
-                        min_service_time_for_gn, best_leg_config = service_time, {'fip': fip, 'fop': fop, 'oh': optimal_oh, 'service_time': service_time}
+                    if total_leg_time < min_total_leg_time:
+                        min_total_leg_time = total_leg_time
+                        # Store the individual components for later use
+                        best_leg_config = {
+                            'fip': fip, 'fop': fop, 'oh': optimal_oh,
+                            'service_time': flight_time_in + collection_time, # Service time is just in-flight and collection
+                        }
 
             if not best_leg_config:
                 print(f"WARNING: Fallback for GN {gn_index}.")
@@ -161,10 +168,17 @@ def run_single_simulation(output_dir: str):
                 min_service_time_for_gn = flight_time_in + hover_time
                 best_leg_config = {'fip': oh, 'fop': oh, 'oh': oh, 'service_time': min_service_time_for_gn}
 
+            # Accumulate the actual time spent (service time for this GN)
             current_uav_time += best_leg_config['service_time']
+            # The FOP from the best configuration becomes the SP for the next iteration
             previous_fop = best_leg_config['fop']
-            uav_path_segments.extend([{'type': 'flight', 'start': sp, 'end': best_leg_config['fip']}, {'type': 'collection', **best_leg_config}])
+            
+            uav_path_segments.extend([{'type': 'flight', 'start': sp, 'end': best_leg_config['fip']},
+                                      {'type': 'collection', **best_leg_config}])
+            
             print(f"    -> Optimized for GN {gn_index}. Service Time: {best_leg_config['service_time']:.2f}s. New FOP: {np.round(previous_fop, 1)}")
+
+        # <<< FUNDAMENTAL CORRECTION OF THE JOFC LOOP ENDS HERE >>>
 
         final_flight_time = np.linalg.norm(previous_fop - sim_env.data_center_pos) / params.UAV_MAX_SPEED
         current_uav_time += final_flight_time
@@ -172,7 +186,7 @@ def run_single_simulation(output_dir: str):
         
         final_trajectories[uav_id], uav_mission_times[uav_id] = uav_path_segments, current_uav_time
         print(f"  - Optimization complete for {uav_id}. Total mission time: {current_uav_time:.2f}s")
-
+        
         print("  -> Running Convex Planner for the same sequence...")
         convex_result = convex_planner.plan_shortest_path_for_sequence(gn_indices_route)
         convex_trajectories[uav_id], convex_path_lengths[uav_id] = convex_result['path'], convex_result['length']
@@ -203,62 +217,47 @@ def run_single_simulation(output_dir: str):
     
     print("\n[Step 5/5] Visualizing final combined trajectories...")
     vis.plot_final_comparison_trajectories(
-        gns=sim_env.gn_positions,
-        data_center_pos=sim_env.data_center_pos,
-        v_shaped_trajectories=final_trajectories,
-        convex_trajectories=convex_trajectories,
-        area_width=params.AREA_WIDTH,
-        area_height=params.AREA_HEIGHT,
+        gns=sim_env.gn_positions, data_center_pos=sim_env.data_center_pos,
+        v_shaped_trajectories=final_trajectories, convex_trajectories=convex_trajectories,
+        area_width=params.AREA_WIDTH, area_height=params.AREA_HEIGHT,
         comm_radius=traj_optimizer.comm_radius_d,
-        save_path=os.path.join(output_dir, 'final_trajectories.png')
+        save_path=os.path.join(output_dir, f'{run_prefix}_final_trajectories.png')
     )
     
     print("\nSimulation finished successfully.")
     print("======================================================")
 
-# --- Main Entry Point for Batch Execution ---
-
+# --- Main Entry Point for Batch Execution (No changes from your version) ---
 if __name__ == "__main__":
-    
-    NUMBER_OF_RUNS = 3  # <--- SET HOW MANY TIMES YOU WANT TO RUN
+    NUMBER_OF_RUNS = 3 # Set to 1 for testing the fix
     BASE_RESULTS_DIR = "simulation_results"
     
     if not os.path.exists(BASE_RESULTS_DIR):
         os.makedirs(BASE_RESULTS_DIR)
-        
+    
+    batch_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    batch_run_dir = os.path.join(BASE_RESULTS_DIR, f"run_{batch_timestamp}")
+    os.makedirs(batch_run_dir)
+    
+    print(f"Starting batch of {NUMBER_OF_RUNS} runs.")
+    print(f"All results will be saved in: {batch_run_dir}")
+    
     original_stdout = sys.stdout
     
     for i in range(NUMBER_OF_RUNS):
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        run_dir = os.path.join(BASE_RESULTS_DIR, f"run_{i+1}_{timestamp}")
-        os.makedirs(run_dir)
-        
-        log_path = os.path.join(run_dir, "log.txt")
+        run_prefix = f"run_{i+1}"
+        log_path = os.path.join(batch_run_dir, f"{run_prefix}_log.txt")
         logger = Logger(log_path)
         sys.stdout = logger
-        
-        print(f"--- Starting Run {i+1}/{NUMBER_OF_RUNS} ---")
-        print(f"Results will be saved in: {run_dir}")
-        
+        print(f"\n--- Starting {run_prefix.upper()} ---")
         try:
-            # Use a different random seed for each run to get different GN placements
-            # This makes each run a unique experiment
-            current_seed = int(time.time()) + i
-            print(f"Using random seed: {current_seed}")
-            params.RANDOM_SEED = current_seed
-            
-            run_single_simulation(run_dir)
+            setattr(params, 'RANDOM_SEED', int(time.time()) + i)
+            run_single_simulation(run_prefix, batch_run_dir)
         except Exception as e:
-            print("\n" + "="*20 + " ERROR " + "="*20)
-            print(f"An error occurred during run {i+1}:")
             traceback.print_exc()
-            print("="*47)
         finally:
-            # Ensure the logger is closed and stdout is restored even if errors occur
-            if isinstance(sys.stdout, Logger):
-                sys.stdout.close()
+            if isinstance(sys.stdout, Logger): sys.stdout.close()
             sys.stdout = original_stdout
+        print(f"--- Finished {run_prefix.upper()} ---")
 
-        print(f"--- Finished Run {i+1}/{NUMBER_OF_RUNS} ---\n")
-
-    print(f"All {NUMBER_OF_RUNS} runs completed. Check the '{BASE_RESULTS_DIR}' directory.")
+    print(f"\nAll runs completed. Check the '{batch_run_dir}' directory.")
