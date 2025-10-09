@@ -157,7 +157,7 @@ def run_single_simulation(run_prefix: str, output_dir: str):
                         }
             else:
                 # --- STANDARD HANDLING FOR NON-OVERLAPPING REGIONS (Our previous corrected logic) ---
-                num_angles = 24
+                num_angles = 36
                 angles = np.linspace(0, 2 * np.pi, num_angles, endpoint=False)
                 fip_candidates = [current_gn_coord + comm_radius * np.array([np.cos(a), np.sin(a)]) for a in angles]
                 fop_candidates = [current_gn_coord + comm_radius * np.array([np.cos(a), np.sin(a)]) for a in angles]
@@ -255,7 +255,7 @@ def run_single_simulation(run_prefix: str, output_dir: str):
 
 # --- Main Entry Point for Batch Execution (No changes from your version) ---
 if __name__ == "__main__":
-    NUMBER_OF_RUNS = 3 # Set to 1 for testing the fix
+    NUMBER_OF_RUNS = 100 # Set to 1 for testing the fix
     BASE_RESULTS_DIR = "simulation_results"
     
     if not os.path.exists(BASE_RESULTS_DIR):
