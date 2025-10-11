@@ -139,7 +139,7 @@ def run_single_simulation(run_prefix: str, output_dir: str):
                     
                     if required_data_per_gn <= c_max:
                         optimal_oh, collection_time = traj_optimizer.find_optimal_fm_trajectory(
-                            fip, fop, current_gn_coord, required_data_per_gn)
+                            fip, fop, current_gn_coord, required_data_per_gn, is_overlapping=True)
                     else:
                         optimal_oh = current_gn_coord
                         collection_flight_time = (np.linalg.norm(fip - optimal_oh) + np.linalg.norm(optimal_oh - fop)) / params.UAV_MAX_SPEED
@@ -169,7 +169,7 @@ def run_single_simulation(run_prefix: str, output_dir: str):
                         
                         if required_data_per_gn <= c_max:
                             optimal_oh, collection_time = traj_optimizer.find_optimal_fm_trajectory(
-                                fip, fop, current_gn_coord, required_data_per_gn)
+                                fip, fop, current_gn_coord, required_data_per_gn, is_overlapping=False)
                         else:
                             optimal_oh = current_gn_coord
                             collection_flight_time = (np.linalg.norm(fip - optimal_oh) + np.linalg.norm(optimal_oh - fop)) / params.UAV_MAX_SPEED
@@ -255,7 +255,7 @@ def run_single_simulation(run_prefix: str, output_dir: str):
 
 # --- Main Entry Point for Batch Execution (No changes from your version) ---
 if __name__ == "__main__":
-    NUMBER_OF_RUNS = 100 # Set to 1 for testing the fix
+    NUMBER_OF_RUNS = 3 # Set to 1 for testing the fix
     BASE_RESULTS_DIR = "simulation_results"
     
     if not os.path.exists(BASE_RESULTS_DIR):

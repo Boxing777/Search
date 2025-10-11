@@ -1,10 +1,12 @@
 # ==============================================================================
-#      UAV Trajectory Optimizer (Version 3: Enhanced Robustness and Logic)
+#      UAV Trajectory Optimizer (Final Geometrically Correct Version)
 #
 # File Objective:
-# This file implements the core trajectory optimization logic. This version
-# enhances the robustness of the binary search and ensures the final optimal
-# points are calculated with the converged parameters for maximum fidelity.
+# This definitive version correctly distinguishes between non-overlapping and
+# overlapping scenarios. For non-overlapping cases (where FIP and FOP are on
+# the same circle), it uses the efficient mid-perpendicular search (Lemma 1).
+# For overlapping cases (where FIP and FOP are on different circles), it
+# faithfully implements the general ellipse-based search (Algorithm 2).
 # ==============================================================================
 
 import numpy as np
@@ -39,6 +41,7 @@ class TrajectoryOptimizer:
                 snr = np.inf 
             else:
                 dist_3d = np.sqrt(mid_d**2 + self.uav_altitude**2)
+                if dist_3d == 0: continue
                 elevation = np.degrees(np.arcsin(self.uav_altitude / dist_3d))
                 path_loss = models.calculate_path_loss(dist_3d, elevation, self.params)
                 snr = models.calculate_snr(self.gn_tx_power_watts, self.noise_power_watts, path_loss)
@@ -74,6 +77,7 @@ class TrajectoryOptimizer:
             
             dist_2d = np.linalg.norm(uav_pos_2d - gn_coord_2d)
             dist_3d = np.sqrt(dist_2d**2 + self.uav_altitude**2)
+            if dist_3d < 1e-6: continue
             elevation_angle = np.degrees(np.arcsin(self.uav_altitude / dist_3d))
             
             path_loss = models.calculate_path_loss(dist_3d, elevation_angle, self.params)
@@ -111,14 +115,13 @@ class TrajectoryOptimizer:
         """Implements Lemma 1: Finds optimal OH on the mid-perpendicular via binary search."""
         q_point = (fip + fop) / 2.0
         if np.linalg.norm(fip - fop) < 1e-6:
-            return q_point, 0.0
+            return q_point, float('inf') if required_data > 1e-6 else 0.0
             
         v_perp = np.array([fop[1] - fip[1], fip[0] - fop[0]])
         v_perp_unit = v_perp / np.linalg.norm(v_perp)
         
-        # A more robust upper bound for the search range
         low_d = 0.0
-        high_d = np.linalg.norm(gn_coord - q_point) # <<< MODIFIED (More robust upper bound)
+        high_d = np.linalg.norm(gn_coord - q_point) + self.comm_radius_d
         best_d = high_d
 
         for _ in range(20):
@@ -144,35 +147,42 @@ class TrajectoryOptimizer:
         collection_time = path_length / self.uav_max_speed
         return optimal_oh, collection_time
 
-    def find_optimal_fm_trajectory(self, fip: np.ndarray, fop: np.ndarray, gn_coord: np.ndarray, required_data: float, is_symmetric: bool = False) -> Tuple[np.ndarray, float]:
+    # <<< FUNDAMENTALLY CORRECTED LOGIC >>>
+    def find_optimal_fm_trajectory(self, fip: np.ndarray, fop: np.ndarray, gn_coord: np.ndarray, required_data: float, is_overlapping: bool) -> Tuple[np.ndarray, float]:
         """
-        Finds the optimal V-shaped trajectory for FM mode. Implements Algorithm 2 logic.
+        Finds the optimal V-shaped trajectory for FM mode.
+        - If NOT overlapping (is_overlapping=False), FIP/FOP are on the same circle 
+          -> use simplified mid-perpendicular search (Lemma 1).
+        - If overlapping (is_overlapping=True), FIP/FOP are on different circles
+          -> use general ellipse-based search (Algorithm 2).
         """
-        if is_symmetric:
+        if not is_overlapping:
+            # Non-overlapping case: FIP/FOP on same circle -> OH is on mid-perpendicular.
             return self._find_oh_on_mid_perpendicular(fip, fop, gn_coord, required_data)
+        else:
+            # Overlapping/General case: FIP/FOP not on same circle -> OH is not on mid-perpendicular.
+            # Must use the full Algorithm 2: bisection on path length K.
+            k_min = np.linalg.norm(fip - fop)
+            k_max = np.linalg.norm(fip - gn_coord) + np.linalg.norm(gn_coord - fop)
+            min_path_length = k_max
 
-        k_min = np.linalg.norm(fip - fop)
-        k_max = np.linalg.norm(fip - gn_coord) + np.linalg.norm(gn_coord - fop)
-        min_path_length = k_max
+            for _ in range(10):
+                k_temp = (k_min + k_max) / 2.0
+                if k_temp >= k_max - 1e-6: break
 
-        for _ in range(10):
-            k_temp = (k_min + k_max) / 2.0
-            if k_temp >= k_max - 1e-6: break
+                oh_candidate = self._get_closest_point_on_ellipse(fip, fop, k_temp, gn_coord)
+                max_data_at_k_temp = self._calculate_collected_data(fip, oh_candidate, gn_coord) + \
+                                       self._calculate_collected_data(oh_candidate, fop, gn_coord)
 
-            oh_candidate = self._get_closest_point_on_ellipse(fip, fop, k_temp, gn_coord)
-            max_data_at_k_temp = self._calculate_collected_data(fip, oh_candidate, gn_coord) + \
-                                   self._calculate_collected_data(oh_candidate, fop, gn_coord)
-
-            if max_data_at_k_temp >= required_data:
-                min_path_length = k_temp
-                k_max = k_temp
-            else:
-                k_min = k_temp
-        
-        min_collection_time = min_path_length / self.uav_max_speed
-        # Re-calculate the final OH based on the converged minimum path length for precision
-        final_optimal_oh = self._get_closest_point_on_ellipse(fip, fop, min_path_length, gn_coord) # <<< MODIFIED (Logically more correct)
-        return final_optimal_oh, min_collection_time
+                if max_data_at_k_temp >= required_data:
+                    min_path_length = k_temp
+                    k_max = k_temp
+                else:
+                    k_min = k_temp
+            
+            final_optimal_oh = self._get_closest_point_on_ellipse(fip, fop, min_path_length, gn_coord)
+            collection_time = min_path_length / self.uav_max_speed
+            return final_optimal_oh, collection_time
     
     def calculate_fm_max_capacity(self, fip: np.ndarray, fop: np.ndarray, gn_coord: np.ndarray) -> float:
         """

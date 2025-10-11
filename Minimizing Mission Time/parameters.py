@@ -32,7 +32,7 @@ AREA_HEIGHT = 3000.0 # meters
 
 
 # The total number of Ground Nodes (GNs) that need their data collected (N).
-NUM_GNS =18 # integer
+NUM_GNS =8 # integer
 
 # The total number of Unmanned Aerial Vehicles (UAVs) for the mission (M).
 NUM_UAVS = 1 # integer
