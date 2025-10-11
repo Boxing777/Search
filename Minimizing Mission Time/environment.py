@@ -2,52 +2,65 @@
 #                      Simulation Environment Generation
 #
 # File Objective:
-# The purpose of this file is to establish the physical simulation world.
-# It is responsible for creating and managing the static elements of the
-# simulation scenario, primarily the locations of the Ground Nodes (GNs).
-# It uses parameters defined in `parameters.py` to generate a reproducible
-# and consistent environment for the UAV mission planning algorithms.
+# This file establishes the physical simulation world, ensuring all GNs and
+# their communication ranges are fully contained within the area and do not
+# cover the Data Center.
 # ==============================================================================
 
 # Import necessary libraries
 import numpy as np
-from typing import Optional, Tuple
+from typing import Optional, List
 
 # --- Core Functionality ---
 
-def generate_gns(num_gns: int, area_width: float, area_height: float, seed: Optional[int] = None) -> np.ndarray:
+def generate_gns(num_gns: int, area_width: float, area_height: float, 
+                   margin: float, data_center_pos: np.ndarray, 
+                   seed: Optional[int] = None) -> np.ndarray:
     """
-    Procedurally generates the 2D coordinates for a specified number of Ground Nodes.
-
-    The placement of these nodes is random and uniformly distributed within a
-    defined rectangular area.
+    Generates 2D coordinates for GNs with two constraints:
+    1. GNs and their communication range are within the simulation area.
+    2. GNs' communication ranges do not cover the data center.
 
     Args:
-        num_gns (int): The total number of Ground Nodes to be generated (N).
-        area_width (float): The width of the rectangular area for GN placement.
-        area_height (float): The height of the rectangular area for GN placement.
-        seed (Optional[int], optional): A seed for the random number generator
-            to ensure reproducibility. Defaults to None.
+        num_gns (int): The total number of Ground Nodes (N).
+        area_width (float): The width of the main area.
+        area_height (float): The height of the main area.
+        margin (float): The safety margin from edges and data center (comm_radius).
+        data_center_pos (np.ndarray): The coordinates of the data center.
+        seed (Optional[int], optional): A seed for the random number generator.
 
     Returns:
-        np.ndarray: A NumPy array of shape (num_gns, 2) containing the (x, y)
-                    coordinates of all generated GNs.
+        np.ndarray: An array of shape (num_gns, 2) with the (x, y) coordinates.
     """
-    # If a seed is provided, initialize the random number generator with it
-    # for reproducible results.
     if seed is not None:
         np.random.seed(seed)
 
-    # Generate random x-coordinates uniformly distributed between 0 and area_width.
-    x_coords = np.random.uniform(0, area_width, num_gns)
+    gn_positions: List[np.ndarray] = []
+    
+    # Define the valid generation area, constrained by the margin
+    low_x, high_x = margin, area_width - margin
+    low_y, high_y = margin, area_height - margin
 
-    # Generate random y-coordinates uniformly distributed between 0 and area_height.
-    y_coords = np.random.uniform(0, area_height, num_gns)
+    if low_x >= high_x or low_y >= high_y:
+        raise ValueError(f"Margin ({margin}) is too large for the area dimensions ({area_width}x{area_height}). Cannot generate GNs.")
 
-    # Stack the x and y coordinates into a single (num_gns, 2) array.
-    gn_positions = np.column_stack((x_coords, y_coords))
-
-    return gn_positions
+    # Generate GNs one by one, checking the data center distance constraint
+    while len(gn_positions) < num_gns:
+        # Generate a candidate position
+        candidate_pos = np.array([
+            np.random.uniform(low_x, high_x),
+            np.random.uniform(low_y, high_y)
+        ])
+        
+        # <<< NEW CONSTRAINT CHECK >>>
+        # Calculate the distance from the candidate GN to the data center
+        distance_to_dc = np.linalg.norm(candidate_pos - data_center_pos)
+        
+        # If the distance is greater than the margin (comm_radius), accept the point
+        if distance_to_dc > margin:
+            gn_positions.append(candidate_pos)
+    
+    return np.array(gn_positions)
 
 
 # --- Class Structure for Environment Management ---
@@ -55,54 +68,36 @@ def generate_gns(num_gns: int, area_width: float, area_height: float, seed: Opti
 class SimulationEnvironment:
     """
     A container for all static elements of the simulation world.
-
-    This class is initialized with simulation parameters and holds the state of
-    the environment, such as GN positions and the data center location. It can
-    be passed to other modules to ensure they operate on a consistent world model.
-
-    Attributes:
-        area_width (float): The width of the simulation area.
-        area_height (float): The height of the simulation area.
-        data_center_pos (np.ndarray): A (1, 2) array for the data center's coordinates.
-        gn_positions (np.ndarray): An (N, 2) array storing the coordinates of the N GNs.
     """
-    def __init__(self, params):
+    def __init__(self, params, comm_radius: float):
         """
-        Constructs the SimulationEnvironment using parameters from a config object.
+        Constructs the SimulationEnvironment.
 
         Args:
-            params: A module or object containing simulation parameters, expected
-                    to have attributes like AREA_WIDTH, AREA_HEIGHT, NUM_GNS,
-                    DATA_CENTER_POS, and an optional RANDOM_SEED.
+            params: A module or object containing simulation parameters.
+            comm_radius (float): The communication radius, used as a margin.
         """
-        # Store key environmental dimensions
         self.area_width: float = params.AREA_WIDTH
         self.area_height: float = params.AREA_HEIGHT
-
-        # Store the data center position, ensuring it's a NumPy array for consistency
         self.data_center_pos: np.ndarray = np.array(params.DATA_CENTER_POS)
-
-        # Safely get the random seed from parameters; defaults to None if not present
-        # using getattr is a robust way to handle optional parameters.
+        
         seed = getattr(params, 'RANDOM_SEED', None)
 
-        # Generate the Ground Node positions by calling the utility function
+        print(f"Generating GNs with a safety margin of {comm_radius:.2f} meters from edges and data center...")
+        
+        # <<< MODIFICATION: Pass data_center_pos to the generator >>>
         self.gn_positions: np.ndarray = generate_gns(
             num_gns=params.NUM_GNS,
             area_width=self.area_width,
             area_height=self.area_height,
+            margin=comm_radius,
+            data_center_pos=self.data_center_pos, # Pass data center position
             seed=seed
         )
 
     def get_gn_position(self, gn_index: int) -> np.ndarray:
         """
-        A helper method to retrieve the coordinates of a specific GN by its index.
-
-        Args:
-            gn_index (int): The index of the desired Ground Node.
-
-        Returns:
-            np.ndarray: A (1, 2) array representing the GN's (x, y) coordinates.
+        Retrieves the coordinates of a specific GN by its index.
         """
         if 0 <= gn_index < len(self.gn_positions):
             return self.gn_positions[gn_index]
