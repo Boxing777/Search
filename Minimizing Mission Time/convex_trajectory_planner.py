@@ -45,7 +45,7 @@ class ConvexTrajectoryPlanner:
             Dict: A dictionary containing the final path coordinates and total length.
         """
         if not ordered_gn_indices:
-            return {"path": np.array([]), "length": 0.0}
+            return {"path": np.array([]), "length": 0.0, "collection_segments": []}
         
         print(f"  - Planning shortest path for fixed order: {ordered_gn_indices}")
         
@@ -84,7 +84,7 @@ class ConvexTrajectoryPlanner:
 
         if problem.status not in ["optimal", "optimal_inaccurate"]:
             print(f"  - WARNING: Convex optimization failed. Status: {problem.status}")
-            return {"path": np.array([]), "length": 0.0}
+            return {"path": np.array([]), "length": 0.0, "collection_segments": []}
 
         print("  - Convex optimization successful.")
         
@@ -100,8 +100,17 @@ class ConvexTrajectoryPlanner:
         
         final_path = np.array(full_path)
         final_length = problem.value
+        
+        collection_segments = []
+        for i in range(N):
+            collection_segments.append({
+                "gn_index": ordered_gn_indices[i],
+                "start": optimal_so[i],
+                "end": optimal_eo[i]
+            })
 
         return {
             "path": final_path,
-            "length": final_length
+            "length": final_length,
+            "collection_segments": collection_segments
         }

@@ -99,11 +99,13 @@ def run_single_simulation(run_prefix: str, output_dir: str):
     
     final_trajectories, uav_mission_times = {}, {}
     convex_trajectories, convex_path_lengths = {}, {}
+    convex_mission_times = {}
 
     for uav_id, gn_indices_route in initial_assignment.items():
         if not gn_indices_route:
             final_trajectories[uav_id], uav_mission_times[uav_id] = [], 0.0
             convex_trajectories[uav_id], convex_path_lengths[uav_id] = np.array([]), 0.0
+            convex_mission_times[uav_id] = 0.0
             continue
 
         print(f"\n--- Optimizing for {uav_id} with sequence: {gn_indices_route} ---")
@@ -217,6 +219,30 @@ def run_single_simulation(run_prefix: str, output_dir: str):
         convex_result = convex_planner.plan_shortest_path_for_sequence(gn_indices_route)
         convex_trajectories[uav_id], convex_path_lengths[uav_id] = convex_result['path'], convex_result['length']
         print(f"     Convex Path Length: {convex_result['length']:.2f}m")
+        print("  -> Calculating actual mission time for Convex Path...")
+        
+        convex_total_hover_time = 0.0
+        # Iterate through the path segments that are inside communication zones
+        for segment in convex_result['collection_segments']:
+            gn_coord = sim_env.gn_positions[segment['gn_index']]
+            
+            # Calculate how much data can be collected just by flying through
+            data_collected_on_segment = traj_optimizer._calculate_collected_data(
+                segment['start'], segment['end'], gn_coord
+            )
+            
+            # Determine if hovering is needed
+            data_shortfall = required_data_per_gn - data_collected_on_segment
+            if data_shortfall > 0:
+                hover_time = data_shortfall / traj_optimizer.hover_datarate if traj_optimizer.hover_datarate > 0 else float('inf')
+                convex_total_hover_time += hover_time
+        
+        # The total fair time is the flight time plus any required hover time
+        convex_flight_time = convex_result['length'] / params.UAV_MAX_SPEED
+        convex_actual_mission_time = convex_flight_time + convex_total_hover_time
+        convex_mission_times[uav_id] = convex_actual_mission_time
+        
+        print(f"     Convex Path -> Flight Time: {convex_flight_time:.2f}s, Required Hover Time: {convex_total_hover_time:.2f}s, TOTAL FAIR TIME: {convex_actual_mission_time:.2f}s")
 
     print("\n[Step 4/5] Analyzing final results...")
     v_shaped_path_lengths = {}
@@ -226,7 +252,8 @@ def run_single_simulation(run_prefix: str, output_dir: str):
             total_length += np.linalg.norm(s.get('end', s.get('fop')) - s.get('start', s.get('fip'))) if s['type']=='flight' else np.linalg.norm(s['oh']-s['fip']) + np.linalg.norm(s['fop']-s['oh'])
         v_shaped_path_lengths[uav_id] = total_length
     
-    system_mct = max(uav_mission_times.values()) if uav_mission_times else 0
+    system_mct_v_shaped = max(uav_mission_times.values()) if uav_mission_times else 0
+    system_mct_convex = max(convex_mission_times.values()) if convex_mission_times else 0
     total_execution_time = time.time() - start_time
     
     print("\n--- Simulation Summary ---")
@@ -234,11 +261,10 @@ def run_single_simulation(run_prefix: str, output_dir: str):
         if uav_id in uav_mission_times:
             print(f"--- {uav_id} Results ---")
             print(f"  V-Shaped Mission Time: {uav_mission_times.get(uav_id, 0):.2f}s | Path Length: {v_shaped_path_lengths.get(uav_id, 0):.2f}m")
-            convex_len = convex_path_lengths.get(uav_id, 0)
-            convex_time = convex_len / params.UAV_MAX_SPEED if convex_len > 0 else 0
-            print(f"  Convex Mission Time (theor.): {convex_time:.2f}s | Path Length: {convex_len:.2f}m")
+            print(f"  Convex Mission Time:   {convex_mission_times.get(uav_id, 0):.2f}s | Path Length: {convex_path_lengths.get(uav_id, 0):.2f}m")
     
-    print(f"\nSystem Mission Completion Time (MCT) for V-Shaped: {system_mct:.2f}s")
+    print(f"\nSystem Mission Completion Time (MCT) for V-Shaped: {system_mct_v_shaped:.2f}s")
+    print(f"System Mission Completion Time (MCT) for Convex:   {system_mct_convex:.2f}s")
     print(f"Total script execution time: {total_execution_time:.2f}s")
     
     print("\n[Step 5/5] Visualizing final combined trajectories...")
@@ -255,7 +281,7 @@ def run_single_simulation(run_prefix: str, output_dir: str):
 
 # --- Main Entry Point for Batch Execution (No changes from your version) ---
 if __name__ == "__main__":
-    NUMBER_OF_RUNS = 5 # Set to 1 for testing the fix
+    NUMBER_OF_RUNS = 3 # Set to 1 for testing the fix
     BASE_RESULTS_DIR = "simulation_results"
     
     if not os.path.exists(BASE_RESULTS_DIR):
