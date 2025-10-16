@@ -23,22 +23,22 @@ from typing import Tuple, Dict
 
 # The width of the square simulation area. The simulation space is a 2D plane
 # from (0, 0) to (AREA_WIDTH, AREA_HEIGHT).
-AREA_WIDTH = 3000.0  # meters
+AREA_WIDTH = 2000.0  # meters
 
 # The height of the square simulation area. Typically same as AREA_WIDTH.
-AREA_HEIGHT = 3000.0 # meters
+AREA_HEIGHT = 2000.0 # meters
 
 
 
 
 # The total number of Ground Nodes (GNs) that need their data collected (N).
-NUM_GNS =11 # integer
+NUM_GNS =20 # integer
 
 # The total number of Unmanned Aerial Vehicles (UAVs) for the mission (M).
 NUM_UAVS = 1 # integer
 
 # The 2D coordinates of the data center. UAVs start and end here.
-DATA_CENTER_POS: Tuple[float, float] = (1500.0, 1500.0) # meters
+DATA_CENTER_POS: Tuple[float, float] = (1000.0, 1000.0) # meters
 
 # ==============================================================================
 # Section 2: UAV Physical Parameters
@@ -95,7 +95,7 @@ SNR_THRESHOLD_DB = 2.6 # dB (gamma_thresh)
 
 # The path loss exponent (eta). Note: The paper's Table I lists eta=1, which
 # is followed here, but free-space path loss typically uses an exponent of 2.
-PATH_LOSS_EXPONENT = 1.32 # dimensionless
+PATH_LOSS_EXPONENT = 1.26 # dimensionless
 
 # The average additional path loss for Line-of-Sight (LoS) links (xi_LoS).
 LOS_ADDITIONAL_LOSS_DB = 3.0 # dB
