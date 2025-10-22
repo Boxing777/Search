@@ -50,7 +50,7 @@ def generate_gns(num_gns: int, area_width: float, area_height: float,
         
     # <<< MODIFICATION START: The entire generation loop is modified >>>
     # Define the minimum inter-node distance based on the new rule.
-    min_dist = 0.8 * margin
+    min_dist = 0.7 * margin
 
     # Loop with max_attempts to generate nodes one by one with all checks.
     for _ in range(max_attempts):
