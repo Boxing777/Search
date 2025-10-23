@@ -141,6 +141,49 @@ def plot_final_trajectories(gns: np.ndarray, data_center_pos: Tuple[float, float
         comm_radius=comm_radius,
         title=title
     )
+    
+
+def plot_convex_path_details(gns: np.ndarray, data_center_pos: Tuple[float, float],
+                             convex_results: Dict, area_width: float, area_height: float,
+                             comm_radius: float, save_path: str = None,
+                             title: str = "Convex Path Details"):
+    """
+    Visualizes the detailed convex-optimized path, highlighting So and Eo points.
+    """
+    fig, ax = plt.subplots(figsize=(12, 12))
+    plot_gn_environment(ax, gns, data_center_pos, area_width, area_height, comm_radius)
+
+    for i, (uav_id, path) in enumerate(convex_results.items()):
+        color = 'darkblue'
+        path_np = np.array(path)
+        if len(path_np) > 0:
+            # Plot the full path
+            ax.plot(path_np[:, 0], path_np[:, 1], color=color, linestyle='--', linewidth=1.5,
+                    label=f'{uav_id} Convex Path')
+            
+            # Highlight So and Eo points
+            # Path structure is [DC, So_0, Eo_0, So_1, Eo_1, ..., So_N-1, Eo_N-1, DC]
+            so_points = path_np[1:-1:2] # Selects So_0, So_1, ...
+            eo_points = path_np[2:-1:2] # Selects Eo_0, Eo_1, ...
+            
+            ax.plot(so_points[:, 0], so_points[:, 1], 'x', color='green', markersize=8, label='Start of Collection (So)')
+            ax.plot(eo_points[:, 0], eo_points[:, 1], 'o', color='purple', markersize=6, fillstyle='none', markeredgewidth=2, label='End of Collection (Eo)')
+
+            # Add arrows to show direction
+            for j in range(len(path_np) - 1):
+                _add_arrow_to_line(ax, path_np[j], path_np[j+1], color)
+
+    ax.set_title(title)
+    handles, labels = ax.get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    ax.legend(by_label.values(), by_label.keys())
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path)
+        plt.close(fig)
+    else:
+        plt.show()
 
 
 def plot_performance_curve(x_data: Dict[str, List], y_data: Dict[str, List],

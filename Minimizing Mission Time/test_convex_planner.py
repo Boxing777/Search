@@ -14,6 +14,7 @@ import os
 import sys
 from datetime import datetime
 import traceback
+import pandas as pd
 
 # Import custom modules
 import parameters as params
@@ -245,6 +246,42 @@ def run_single_simulation(run_prefix: str, output_dir: str):
         
         print(f"     Convex Path -> Flight Time: {convex_flight_time:.2f}s, Required Hover Time: {convex_total_hover_time:.2f}s, TOTAL FAIR TIME: {convex_actual_mission_time:.2f}s")
 
+        # --- Generate and save the detailed CSV report for Convex Path ---
+        convex_report_data = []
+        # We need to re-calculate the details to build the report
+        temp_total_hover_time = 0.0
+        for segment in convex_result['collection_segments']:
+            gn_coord = sim_env.gn_positions[segment['gn_index']]
+            data_collected = traj_optimizer._calculate_collected_data(segment['start'], segment['end'], gn_coord)
+            data_shortfall = required_data_per_gn - data_collected
+            
+            collection_flight_time = np.linalg.norm(segment['end'] - segment['start']) / params.UAV_MAX_SPEED
+            hover_time = 0.0
+
+            if data_shortfall > 0:
+                # Calculate hover rate at the exit point
+                exit_point_Eo = segment['end']
+                dist_2d_at_Eo = np.linalg.norm(exit_point_Eo - gn_coord)
+                dist_3d_at_Eo = np.sqrt(dist_2d_at_Eo**2 + params.UAV_ALTITUDE**2)
+                if dist_3d_at_Eo > 1e-6:
+                    elevation_at_Eo = np.degrees(np.arcsin(params.UAV_ALTITUDE / dist_3d_at_Eo))
+                    path_loss_at_Eo = models.calculate_path_loss(dist_3d_at_Eo, elevation_at_Eo, params.__dict__)
+                    snr_at_Eo = models.calculate_snr(traj_optimizer.gn_tx_power_watts, traj_optimizer.noise_power_watts, path_loss_at_Eo)
+                    rate_at_Eo = models.calculate_transmission_rate(snr_at_Eo, params.BANDWIDTH)
+                    hover_time = data_shortfall / rate_at_Eo if rate_at_Eo > 1e-6 else float('inf')
+            
+            convex_report_data.append({
+                'GN_Index': segment['gn_index'],
+                'Collection_Flight_Time (s)': collection_flight_time,
+                'Hover_Time (s)': hover_time,
+                'Total_Collection_Time (s)': collection_flight_time + hover_time
+            })
+            
+        df_report = pd.DataFrame(convex_report_data)
+        report_path = os.path.join(output_dir, f'{run_prefix}_convex_time_details.csv')
+        df_report.to_csv(report_path, index=False, float_format='%.2f')
+        print(f"     Detailed time report for Convex Path saved to: {os.path.basename(report_path)}")
+
     print("\n[Step 4/5] Analyzing final results...")
     v_shaped_path_lengths = {}
     for uav_id, segments in final_trajectories.items():
@@ -275,6 +312,18 @@ def run_single_simulation(run_prefix: str, output_dir: str):
         area_width=params.AREA_WIDTH, area_height=params.AREA_HEIGHT,
         comm_radius=traj_optimizer.comm_radius_d,
         save_path=os.path.join(output_dir, f'{run_prefix}_final_trajectories.png')
+    )
+    
+    # --- Generate the new detailed plot for the Convex Path ---
+    print("  -> Visualizing Convex Path details...")
+    vis.plot_convex_path_details(
+        gns=sim_env.gn_positions,
+        data_center_pos=sim_env.data_center_pos,
+        convex_results=convex_trajectories, # Pass the dictionary of paths
+        area_width=params.AREA_WIDTH,
+        area_height=params.AREA_HEIGHT,
+        comm_radius=traj_optimizer.comm_radius_d,
+        save_path=os.path.join(output_dir, f'{run_prefix}_convex_details.png')
     )
     
     print("\nSimulation finished successfully.")
