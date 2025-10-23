@@ -7,7 +7,7 @@
 # as C_f_max in the paper, serves as the critical threshold for determining
 # when the Hovering Mode (HM) becomes necessary.
 # ==============================================================================
-
+ 
 import numpy as np
 import parameters as params
 from trajectory_optimizer import TrajectoryOptimizer
@@ -72,3 +72,4 @@ def calculate_benchmark_cmax():
 
 if __name__ == "__main__":
     calculate_benchmark_cmax()
+    
