@@ -51,6 +51,23 @@ class TrajectoryOptimizer:
             else:
                 high_d = mid_d
         return low_d
+    
+    def calculate_hover_rate_at_point(self, point_2d: np.ndarray, gn_coord: np.ndarray) -> float:
+        """
+        Calculates the specific data rate when hovering at a given 2D point.
+        This is used for calculating fair hover times at path edges.
+        """
+        dist_2d = np.linalg.norm(point_2d - gn_coord)
+        dist_3d = np.sqrt(dist_2d**2 + self.uav_altitude**2)
+
+        rate = 0.0
+        if dist_3d > 1e-6:
+            elevation = np.degrees(np.arcsin(self.uav_altitude / dist_3d))
+            path_loss = models.calculate_path_loss(dist_3d, elevation, self.params)
+            snr = models.calculate_snr(self.gn_tx_power_watts, self.noise_power_watts, path_loss)
+            rate = models.calculate_transmission_rate(snr, self.params['BANDWIDTH'])
+            
+        return rate
 
     def _calculate_hover_datarate(self) -> float:
         """Calculates the data rate when hovering directly above a GN."""

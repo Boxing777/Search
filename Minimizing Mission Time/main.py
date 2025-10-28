@@ -235,7 +235,12 @@ def run_single_simulation(run_prefix: str, output_dir: str):
             # Determine if hovering is needed
             data_shortfall = required_data_per_gn - data_collected_on_segment
             if data_shortfall > 0:
-                hover_time = data_shortfall / traj_optimizer.hover_datarate if traj_optimizer.hover_datarate > 0 else float('inf')
+                # hover_time = data_shortfall / traj_optimizer.hover_datarate if traj_optimizer.hover_datarate > 0 else float('inf')
+                # convex_total_hover_time += hover_time
+                exit_point_Eo = segment['end']
+                rate_at_Eo = traj_optimizer.calculate_hover_rate_at_point(exit_point_Eo, gn_coord)
+                hover_time = data_shortfall / rate_at_Eo if rate_at_Eo > 1e-6 else float('inf')
+                
                 convex_total_hover_time += hover_time
         
         # The total fair time is the flight time plus any required hover time
