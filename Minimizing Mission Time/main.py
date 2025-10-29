@@ -71,12 +71,33 @@ def run_single_simulation(run_prefix: str, output_dir: str):
     print("\n[Step 1/5] Initializing simulation environment...")
 
     traj_optimizer = TrajectoryOptimizer(params.__dict__)
+    
+    rate_at_edge = traj_optimizer.get_rate_at_comm_edge()
+
+    # To calculate the benchmark C_f_max, we define a standard diameter path
+    D = traj_optimizer.comm_radius_d
+    # Assume a virtual GN at origin for this calculation
+    virtual_gn_coord = np.array([0.0, 0.0])
+    # FIP and FOP are at the ends of the diameter
+    fip_benchmark = np.array([-D, 0.0])
+    fop_benchmark = np.array([D, 0.0])
+    
+    # Calculate the max capacity on this ideal path
+    c_f_max = traj_optimizer.calculate_fm_max_capacity(fip_benchmark, fop_benchmark, virtual_gn_coord)
+    
+    print(f"\n--- Key Performance Indicators ---")
+    print(f"Communication Radius (D): {traj_optimizer.comm_radius_d:.2f} meters.")
+    print(f"Data Rate at GN Center (max): {traj_optimizer.hover_datarate / 1e6:.2f} Mbps.")
+    print(f"Data Rate at GN Edge (min):   {rate_at_edge / 1e6:.2f} Mbps.")
+    print(f"Max Data in FM Mode (C_f_max): {c_f_max / 1e6:.2f} Mbits.") 
+    print(f"---------------------------------")
+    
     comm_radius = traj_optimizer.comm_radius_d
     sim_env = SimulationEnvironment(params, comm_radius=comm_radius)
     
     print(f"Environment created: {params.AREA_WIDTH}x{params.AREA_HEIGHT}m area with {params.NUM_GNS} GNs.")
 
-    required_data_per_gn = 90 * 1e6 # Set to a high value to see V-shapes data size
+    required_data_per_gn = 200 * 1e6 # Set to a high value to see V-shapes data size
     print(f"Data requirement per GN set to {required_data_per_gn / 1e6:.0f} Mbits.")
     
     print("\n[Step 2/5] Running Mission Allocation (Genetic Algorithm)...")

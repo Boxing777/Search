@@ -27,9 +27,9 @@ class TrajectoryOptimizer:
         self.noise_power_watts = noise_spectral_density_watts * params['BANDWIDTH']
         
         self.comm_radius_d = self._calculate_max_comm_radius_iterative()
-        print(f"Calculated communication radius D = {self.comm_radius_d:.2f} meters.")
+        # print(f"Calculated communication radius D = {self.comm_radius_d:.2f} meters.")
         self.hover_datarate = self._calculate_hover_datarate()
-        print(f"Calculated hover data rate at GN: {self.hover_datarate / 1e6:.2f} Mbps.")
+        # print(f"Calculated hover data rate at GN: {self.hover_datarate / 1e6:.2f} Mbps.")
 
     def _calculate_max_comm_radius_iterative(self) -> float:
         """Calculates the max horizontal communication radius D where SNR equals the threshold."""
@@ -67,6 +67,19 @@ class TrajectoryOptimizer:
             snr = models.calculate_snr(self.gn_tx_power_watts, self.noise_power_watts, path_loss)
             rate = models.calculate_transmission_rate(snr, self.params['BANDWIDTH'])
             
+        return rate
+    
+    def get_rate_at_comm_edge(self) -> float:
+        """
+        Calculates the data rate exactly at the communication radius boundary (D).
+        By definition of D, this should be very close to the rate at the SNR threshold.
+        """
+        # A point on the edge has a horizontal distance of D
+        point_on_edge_2d = np.array([self.comm_radius_d, 0])
+        gn_coord_at_origin = np.array([0, 0])
+        
+        # We can reuse the general-purpose function we created
+        rate = self.calculate_hover_rate_at_point(point_on_edge_2d, gn_coord_at_origin)
         return rate
 
     def _calculate_hover_datarate(self) -> float:
