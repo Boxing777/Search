@@ -14,6 +14,7 @@ import os
 import sys
 from datetime import datetime
 import traceback
+import reporter
 
 # Import custom modules
 import parameters as params
@@ -97,7 +98,7 @@ def run_single_simulation(run_prefix: str, output_dir: str):
     
     print(f"Environment created: {params.AREA_WIDTH}x{params.AREA_HEIGHT}m area with {params.NUM_GNS} GNs.")
 
-    required_data_per_gn = 200 * 1e6 # Set to a high value to see V-shapes data size
+    required_data_per_gn = 1 * 1e6 # Set to a high value to see V-shapes data size
     print(f"Data requirement per GN set to {required_data_per_gn / 1e6:.0f} Mbits.")
     
     print("\n[Step 2/5] Running Mission Allocation (Genetic Algorithm)...")
@@ -255,6 +256,10 @@ def run_single_simulation(run_prefix: str, output_dir: str):
             
             # Determine if hovering is needed
             data_shortfall = required_data_per_gn - data_collected_on_segment
+            
+            collection_flight_time = np.linalg.norm(segment['end'] - segment['start']) / params.UAV_MAX_SPEED
+            hover_time = 0.0
+
             if data_shortfall > 0:
                 # hover_time = data_shortfall / traj_optimizer.hover_datarate if traj_optimizer.hover_datarate > 0 else float('inf')
                 # convex_total_hover_time += hover_time
@@ -262,7 +267,10 @@ def run_single_simulation(run_prefix: str, output_dir: str):
                 rate_at_Eo = traj_optimizer.calculate_hover_rate_at_point(exit_point_Eo, gn_coord)
                 hover_time = data_shortfall / rate_at_Eo if rate_at_Eo > 1e-6 else float('inf')
                 
-                convex_total_hover_time += hover_time
+            convex_total_hover_time += hover_time
+            
+            # Add detailed time to the segment dict for the reporter module to use later
+            segment['Total_Collection_Time (s)'] = collection_flight_time + hover_time
         
         # The total fair time is the flight time plus any required hover time
         convex_flight_time = convex_result['length'] / params.UAV_MAX_SPEED
@@ -270,6 +278,20 @@ def run_single_simulation(run_prefix: str, output_dir: str):
         convex_mission_times[uav_id] = convex_actual_mission_time
         
         print(f"     Convex Path -> Flight Time: {convex_flight_time:.2f}s, Required Hover Time: {convex_total_hover_time:.2f}s, TOTAL FAIR TIME: {convex_actual_mission_time:.2f}s")
+
+        if gn_indices_route: # Ensure there is data to report for this UAV
+            reporter.generate_time_breakdown_report(
+                run_prefix=run_prefix,
+                output_dir=output_dir,
+                uav_id=uav_id,
+                v_shaped_segments=final_trajectories.get(uav_id, []),
+                convex_result=convex_result,
+                # The total times below are not used by the reporter but passed for context
+                v_shaped_total_time=uav_mission_times.get(uav_id, 0), 
+                convex_total_time=convex_mission_times.get(uav_id, 0),
+                data_center_pos=sim_env.data_center_pos,
+                uav_speed=params.UAV_MAX_SPEED
+            )
 
     print("\n[Step 4/5] Analyzing final results...")
     v_shaped_path_lengths = {}
@@ -308,7 +330,7 @@ def run_single_simulation(run_prefix: str, output_dir: str):
 
 # --- Main Entry Point for Batch Execution (No changes from your version) ---
 if __name__ == "__main__":
-    NUMBER_OF_RUNS = 300 # Set to 1 for testing the fix
+    NUMBER_OF_RUNS = 20 # Set to 1 for testing the fix
     BASE_RESULTS_DIR = "simulation_results"
     
     if not os.path.exists(BASE_RESULTS_DIR):
