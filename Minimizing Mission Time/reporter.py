@@ -1,6 +1,10 @@
-# reporter.py (Robust Version)
+# reporter.py (Version 3: Simplified Travel/Service Breakdown)
 # ==============================================================================
 #                      Simulation Report Generator
+#
+# File Objective:
+# This module generates a detailed time breakdown report, separating the mission
+# into 'Travel' (inter-GN flight) and 'Service' (intra-GN collection) segments.
 # ==============================================================================
 
 import numpy as np
@@ -16,101 +20,97 @@ def generate_time_breakdown_report(
     convex_result: Dict,
     data_center_pos: np.ndarray,
     uav_speed: float,
-    **kwargs # Accept extra arguments like total times
+    **kwargs
 ) -> None:
     """
-    Generates a detailed CSV report comparing the time breakdown of V-Shaped
-    and Convex path planning methods for a single UAV.
+    Generates a CSV report with a Travel/Service time breakdown for each method.
     """
-    v_shaped_report_data = []
-    convex_report_data = []
+    report_data = []
 
     # --- 1. Process V-Shaped Trajectory Data ---
-    collection_segments_v = [s for s in v_shaped_segments if s['type'] == 'collection']
-    for i, segment in enumerate(collection_segments_v):
-        sequence_num = i + 1
-        gn_index = segment.get('gn_index', 'N/A')
+    if v_shaped_segments:
+        # The first leg is always from Data Center
+        travel_time = np.linalg.norm(v_shaped_segments[0]['end'] - v_shaped_segments[0]['start']) / uav_speed
         
-        # Find the preceding flight segment to get flight_in_time
-        # The full list index for this collection segment is i*2 + 1
-        flight_segment_index = i * 2
-        flight_segment = v_shaped_segments[flight_segment_index]
-        flight_in_time = np.linalg.norm(flight_segment['end'] - flight_segment['start']) / uav_speed
-        
-        is_overlapping = (flight_in_time < 1e-6)
-        collection_time = segment['service_time'] if is_overlapping else (segment['service_time'] - flight_in_time)
+        collection_segments_v = [s for s in v_shaped_segments if s['type'] == 'collection']
+        for i, segment in enumerate(collection_segments_v):
+            service_time = segment['service_time']
+            report_data.append({
+                'Method': 'V-Shaped',
+                'Sequence': i + 1,
+                'GN_Index': segment.get('gn_index', 'N/A'),
+                'Travel_Time (s)': travel_time,
+                'Service_Time (s)': service_time,
+            })
+            # The travel time for the next leg is the flight-out time of the current leg
+            if i < len(collection_segments_v) - 1:
+                current_fop = segment['fop']
+                next_fip = v_shaped_segments[(i + 1) * 2]['end']
+                travel_time = np.linalg.norm(next_fip - current_fop) / uav_speed
+            else: # Add final travel back to DC
+                last_fop = segment['fop']
+                final_travel_time = np.linalg.norm(data_center_pos - last_fop) / uav_speed
+                report_data.append({
+                    'Method': 'V-Shaped', 'Sequence': i + 2, 'GN_Index': 'DC',
+                    'Travel_Time (s)': final_travel_time, 'Service_Time (s)': 0.0,
+                })
 
-        v_shaped_report_data.append({
-            'Method': 'V-Shaped',
-            'Sequence': sequence_num,
-            'GN_Index': gn_index,
-            'Flight_In_Time (s)': flight_in_time,
-            'Collection_Time (s)': collection_time,
-        })
-            
     # --- 2. Process Convex Trajectory Data ---
-    previous_eo = data_center_pos
-    for i, segment in enumerate(convex_result.get('collection_segments', [])):
-        so_point = segment['start']
-        flight_in_time = np.linalg.norm(so_point - previous_eo) / uav_speed
-        collection_time = segment.get('Total_Collection_Time (s)', 0)
-        convex_report_data.append({
-            'Method': 'Convex',
-            'Sequence': i + 1,
-            'GN_Index': segment['gn_index'],
-            'Flight_In_Time (s)': flight_in_time,
-            'Collection_Time (s)': collection_time,
-        })
-        previous_eo = segment['end']
-
-    # --- 3. Calculate Flight-Out Times (Robust Method) ---
-    if v_shaped_report_data:
-        for i in range(len(v_shaped_report_data)):
-            current_collection_segment = collection_segments_v[i]
-            current_fop = current_collection_segment['fop']
-            
-            if i < len(v_shaped_report_data) - 1:
-                # Flight-out is to the next collection segment's FIP
-                # The next collection segment is at index (i+1)*2 + 1
-                # The flight segment before it is at (i+1)*2
-                next_flight_segment = v_shaped_segments[(i + 1) * 2]
-                next_fip = next_flight_segment['end']
-                flight_out_time = np.linalg.norm(next_fip - current_fop) / uav_speed
-            else: 
-                # Last GN, flight-out is to the data center
-                flight_out_time = np.linalg.norm(data_center_pos - current_fop) / uav_speed
-            
-            v_shaped_report_data[i]['Flight_Out_Time (s)'] = flight_out_time
-
-    if convex_report_data:
-        collection_segments_c = convex_result.get('collection_segments', [])
-        for i in range(len(convex_report_data)):
-            current_eo = collection_segments_c[i]['end']
-            if i < len(convex_report_data) - 1:
+    if convex_result and convex_result.get('collection_segments'):
+        collection_segments_c = convex_result['collection_segments']
+        # The first leg is always from Data Center
+        travel_time = np.linalg.norm(collection_segments_c[0]['start'] - data_center_pos) / uav_speed
+        
+        for i, segment in enumerate(collection_segments_c):
+            service_time = segment.get('Total_Collection_Time (s)', 0)
+            report_data.append({
+                'Method': 'Convex',
+                'Sequence': i + 1,
+                'GN_Index': segment['gn_index'],
+                'Travel_Time (s)': travel_time,
+                'Service_Time (s)': service_time,
+            })
+            # The travel time for the next leg is from current Eo to next So
+            if i < len(collection_segments_c) - 1:
+                current_eo = segment['end']
                 next_so = collection_segments_c[i+1]['start']
-                flight_out_time = np.linalg.norm(next_so - current_eo) / uav_speed
-            else:
-                flight_out_time = np.linalg.norm(data_center_pos - current_eo) / uav_speed
-            convex_report_data[i]['Flight_Out_Time (s)'] = flight_out_time
+                travel_time = np.linalg.norm(next_so - current_eo) / uav_speed
+            else: # Add final travel back to DC
+                last_eo = segment['end']
+                final_travel_time = np.linalg.norm(data_center_pos - last_eo) / uav_speed
+                report_data.append({
+                    'Method': 'Convex', 'Sequence': i + 2, 'GN_Index': 'DC',
+                    'Travel_Time (s)': final_travel_time, 'Service_Time (s)': 0.0,
+                })
 
-    # --- 4. Combine, format, and save the report ---
-    if v_shaped_report_data or convex_report_data:
-        df_v = pd.DataFrame(v_shaped_report_data)
-        df_c = pd.DataFrame(convex_report_data)
-        
-        # Add a summary row
-        if not df_v.empty:
-            summary_v = pd.DataFrame([{'Method': 'V-Shaped', 'Sequence': 'TOTAL', 'GN_Index': '-', 'Flight_In_Time (s)': df_v['Flight_In_Time (s)'].sum(), 'Collection_Time (s)': df_v['Collection_Time (s)'].sum(), 'Flight_Out_Time (s)': df_v['Flight_Out_Time (s)'].sum()}])
-            df_v = pd.concat([df_v, summary_v], ignore_index=True)
-        if not df_c.empty:
-            summary_c = pd.DataFrame([{'Method': 'Convex', 'Sequence': 'TOTAL', 'GN_Index': '-', 'Flight_In_Time (s)': df_c['Flight_In_Time (s)'].sum(), 'Collection_Time (s)': df_c['Collection_Time (s)'].sum(), 'Flight_Out_Time (s)': df_c['Flight_Out_Time (s)'].sum()}])
-            df_c = pd.concat([df_c, summary_c], ignore_index=True)
+    # --- 3. Generate DataFrame and Summary ---
+    if not report_data:
+        print("No data to generate report.")
+        return
 
-        df_combined = pd.concat([df_v, df_c]).sort_values(by=['Sequence', 'Method'], key=lambda x: pd.to_numeric(x, errors='coerce').fillna(float('inf')))
-        
-        cols = ['Method', 'Sequence', 'GN_Index', 'Flight_In_Time (s)', 'Collection_Time (s)', 'Flight_Out_Time (s)']
-        df_combined = df_combined.reindex(columns=cols)
-        
-        report_path = os.path.join(output_dir, f'{run_prefix}_{uav_id}_time_breakdown_report.csv')
-        df_combined.to_csv(report_path, index=False, float_format='%.2f')
-        print(f"\nDetailed time breakdown report saved to: {os.path.basename(report_path)}")
+    df = pd.DataFrame(report_data)
+    
+    summary_list = []
+    for method in ['V-Shaped', 'Convex']:
+        method_df = df[df['Method'] == method]
+        if not method_df.empty:
+            total_time = method_df['Travel_Time (s)'].sum() + method_df['Service_Time (s)'].sum()
+            summary_list.append({
+                'Method': method,
+                'Sequence': 'TOTAL',
+                'GN_Index': '-',
+                'Travel_Time (s)': method_df['Travel_Time (s)'].sum(),
+                'Service_Time (s)': method_df['Service_Time (s)'].sum(),
+                'Total_Mission_Time (s)': total_time
+            })
+            
+    df_summary = pd.DataFrame(summary_list)
+    
+    # --- 4. Save Report ---
+    cols = ['Method', 'Sequence', 'GN_Index', 'Travel_Time (s)', 'Service_Time (s)']
+    df_final = pd.concat([df[cols], df_summary], ignore_index=True)
+    df_final = df_final.sort_values(by=['Method', 'Sequence'], key=lambda x: pd.to_numeric(x, errors='coerce').fillna(float('inf')))
+    
+    report_path = os.path.join(output_dir, f'{run_prefix}_{uav_id}_time_breakdown_report.csv')
+    df_final.to_csv(report_path, index=False, float_format='%.2f')
+    print(f"\nDetailed time breakdown report saved to: {os.path.basename(report_path)}")

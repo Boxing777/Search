@@ -279,16 +279,13 @@ def run_single_simulation(run_prefix: str, output_dir: str):
         
         print(f"     Convex Path -> Flight Time: {convex_flight_time:.2f}s, Required Hover Time: {convex_total_hover_time:.2f}s, TOTAL FAIR TIME: {convex_actual_mission_time:.2f}s")
 
-        if gn_indices_route: # Ensure there is data to report for this UAV
+        if gn_indices_route:
             reporter.generate_time_breakdown_report(
                 run_prefix=run_prefix,
                 output_dir=output_dir,
                 uav_id=uav_id,
                 v_shaped_segments=final_trajectories.get(uav_id, []),
                 convex_result=convex_result,
-                # The total times below are not used by the reporter but passed for context
-                v_shaped_total_time=uav_mission_times.get(uav_id, 0), 
-                convex_total_time=convex_mission_times.get(uav_id, 0),
                 data_center_pos=sim_env.data_center_pos,
                 uav_speed=params.UAV_MAX_SPEED
             )
