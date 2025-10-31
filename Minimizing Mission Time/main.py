@@ -280,7 +280,7 @@ def run_single_simulation(run_prefix: str, output_dir: str):
         print(f"     Convex Path -> Flight Time: {convex_flight_time:.2f}s, Required Hover Time: {convex_total_hover_time:.2f}s, TOTAL FAIR TIME: {convex_actual_mission_time:.2f}s")
 
         if gn_indices_route:
-            reporter.generate_time_breakdown_report(
+            reporter.generate_flight_log_report( # Changed function name
                 run_prefix=run_prefix,
                 output_dir=output_dir,
                 uav_id=uav_id,
