@@ -1,4 +1,4 @@
-# reporter.py (Version 7: Final Flight Log Format)
+# reporter.py (Version 8: Corrected Fly-Back Time Logic)
 # ==============================================================================
 #                      Simulation Report Generator
 # ==============================================================================
@@ -36,10 +36,14 @@ def generate_flight_log_report(
             
             collection_dist = np.linalg.norm(segment['oh'] - segment['fip']) + np.linalg.norm(segment['fop'] - segment['oh'])
             
-            # The service_time from main.py is either (t_in + t_collect) or just (t_collect).
-            # We need to robustly extract just the collection part.
             is_overlapping = (fly_in_dist < 1e-6)
-            collection_time = segment['service_time'] if is_overlapping else (segment['service_time'] - fly_in_time)
+            # service_time from main.py is correct, but we need to extract collection_time for the report.
+            # In non-overlapping, service_time = flight_in + collection.
+            # In overlapping, service_time = collection.
+            # So, collection_time can be derived from service_time and the calculated flight_in_time.
+            calculated_flight_in_time_from_service = segment['service_time'] - segment['collection_time'] if 'collection_time' in segment and not is_overlapping else 0
+            collection_time = segment.get('collection_time', segment['service_time'] - calculated_flight_in_time_from_service)
+
             
             report_data.append({
                 'Method': 'V-Shaped',
@@ -53,13 +57,6 @@ def generate_flight_log_report(
             })
             previous_fop = segment['fop']
             
-        # Add the final flight back time to the last entry for V-Shaped
-        if report_data:
-            fly_back_time = np.linalg.norm(data_center_pos - previous_fop) / uav_speed
-            # Find the index of the last V-Shaped entry in the report_data list
-            # It will be the last one we added.
-            report_data[-1]['Fly_Back_Time (s)'] = fly_back_time
-
     # --- 2. Process Convex Trajectory Data ---
     if convex_result and convex_result.get('collection_segments'):
         collection_segments_c = convex_result['collection_segments']
@@ -85,18 +82,6 @@ def generate_flight_log_report(
                 'Fly_Back_Time (s)': 0.0 # Default to 0
             })
             previous_eo = segment['end']
-            
-        # Add the final flight back time to the last entry for Convex
-        if report_data:
-            fly_back_time = np.linalg.norm(data_center_pos - previous_eo) / uav_speed
-            # Find the index of the last Convex entry
-            last_convex_index = -1 # Find the last index with method 'Convex'
-            for idx in range(len(report_data) - 1, -1, -1):
-                if report_data[idx]['Method'] == 'Convex':
-                    last_convex_index = idx
-                    break 
-            if last_convex_index != -1:
-                report_data[last_convex_index]['Fly_Back_Time (s)'] = fly_back_time
 
     # --- 3. Generate and Save Final Report ---
     if not report_data:
@@ -104,6 +89,40 @@ def generate_flight_log_report(
         return
 
     df = pd.DataFrame(report_data)
+    
+    # <<< MODIFICATION START: Correct and robust calculation of Fly_Back_Time >>>
+    # Original flawed logic is commented out below for reference
+    # # if report_data:
+    # #     fly_back_time = np.linalg.norm(data_center_pos - previous_fop) / uav_speed
+    # #     report_data[-1]['Fly_Back_Time (s)'] = fly_back_time
+    # # ... (and the complex index search for Convex) ...
+
+    # New robust logic:
+    if 'V-Shaped' in df['Method'].values:
+        # Find the index of the row with the highest 'Sequence' number for V-Shaped
+        last_v_shaped_row_index = df.loc[df['Method'] == 'V-Shaped', 'Sequence'].idxmax()
+        
+        # Get the corresponding FOP from the original data structure
+        last_gn_sequence_index = df.loc[last_v_shaped_row_index, 'Sequence'] - 1
+        last_collection_segment_v = [s for s in v_shaped_segments if s['type'] == 'collection'][last_gn_sequence_index]
+        last_fop_v = last_collection_segment_v['fop']
+        
+        fly_back_time_v = np.linalg.norm(data_center_pos - last_fop_v) / uav_speed
+        df.loc[last_v_shaped_row_index, 'Fly_Back_Time (s)'] = fly_back_time_v
+
+    if 'Convex' in df['Method'].values:
+        # Find the index of the row with the highest 'Sequence' number for Convex
+        last_convex_row_index = df.loc[df['Method'] == 'Convex', 'Sequence'].idxmax()
+
+        # Get the corresponding Eo from the original data structure
+        last_gn_sequence_index_c = df.loc[last_convex_row_index, 'Sequence'] - 1
+        last_collection_segment_c = convex_result['collection_segments'][last_gn_sequence_index_c]
+        last_eo_c = last_collection_segment_c['end']
+
+        fly_back_time_c = np.linalg.norm(data_center_pos - last_eo_c) / uav_speed
+        df.loc[last_convex_row_index, 'Fly_Back_Time (s)'] = fly_back_time_c
+    # <<< MODIFICATION END >>>
+
     df = df.sort_values(by=['Method', 'Sequence'])
     
     # Reorder columns to match the requested format
@@ -111,9 +130,8 @@ def generate_flight_log_report(
             'Fly_IN_Time (s)', 'Fly_IN_Distance (m)', 
             'Collection_Time (s)', 'Collection_Distance (m)', 
             'Fly_Back_Time (s)']
-    df_final = df[cols]
+    df_final = df.reindex(columns=cols) # Use reindex to handle missing columns gracefully
 
     report_path = os.path.join(output_dir, f'{run_prefix}_{uav_id}_flight_log_report.csv')
     df_final.to_csv(report_path, index=False, float_format='%.2f')
     print(f"\nDetailed flight log report saved to: {os.path.basename(report_path)}")
-    
