@@ -327,7 +327,7 @@ def run_single_simulation(run_prefix: str, output_dir: str):
 
 # --- Main Entry Point for Batch Execution (No changes from your version) ---
 if __name__ == "__main__":
-    NUMBER_OF_RUNS = 20 # Set to 1 for testing the fix
+    NUMBER_OF_RUNS = 200 # Set to 1 for testing the fix
     BASE_RESULTS_DIR = "simulation_results"
     
     if not os.path.exists(BASE_RESULTS_DIR):

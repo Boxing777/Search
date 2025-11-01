@@ -109,10 +109,36 @@ def plot_final_comparison_trajectories(gns: np.ndarray, data_center_pos: Tuple[f
                 if segment.get('mode') == 'HM':
                     ax.plot(oh[0], oh[1], 'o', color=color, markersize=8, markeredgecolor='black')
                 sequence_counter += 1
+                
+    so_label_added = False
+    eo_label_added = False
     for i, (uav_id, path) in enumerate(convex_trajectories.items()):
         color = 'darkblue' if i==0 else 'darkgreen'
         if len(path) > 0:
-            ax.plot(path[:, 0], path[:, 1], color=color, linestyle='--', linewidth=2.0, marker='x', markersize=6, label=f'{uav_id} Convex (Shortest Path)')
+            # 1. Plot the full path line without markers, but add a label for the legend
+            ax.plot(path[:, 0], path[:, 1], color=color, linestyle=':', linewidth=2.0, 
+                    label=f'{uav_id} Convex (Shortest Path)')
+
+            # 2. Extract So and Eo points
+            # Path structure is [DC, So_0, Eo_0, So_1, Eo_1, ..., DC]
+            # So points are at indices 1, 3, 5, ...
+            so_points = path[1:-1:2]
+            # Eo points are at indices 2, 4, 6, ...
+            eo_points = path[2:-1:2]
+
+            # 3. Plot So points with 'x' markers
+            if len(so_points) > 0:
+                ax.plot(so_points[:, 0], so_points[:, 1], 'x', color='green', markersize=8, 
+                        markeredgewidth=2, label='Start of Collection (So)' if not so_label_added else "", 
+                        zorder=5)
+                so_label_added = True
+
+            # 4. Plot Eo points with 'o' markers
+            if len(eo_points) > 0:
+                ax.plot(eo_points[:, 0], eo_points[:, 1], 'o', color='purple', markersize=8,
+                        fillstyle='none', markeredgewidth=2, label='End of Collection (Eo)' if not eo_label_added else "",
+                        zorder=5)
+                eo_label_added = True
     handles, labels = ax.get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
     ax.legend(by_label.values(), by_label.keys(), fontsize='large')
