@@ -127,4 +127,3 @@ class SimulationEnvironment:
             return self.gn_positions[gn_index]
         else:
             raise IndexError(f"GN index {gn_index} is out of bounds.")
-        

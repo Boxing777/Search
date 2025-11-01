@@ -221,4 +221,3 @@ class TrajectoryOptimizer:
         data1 = self._calculate_collected_data(fip, gn_coord, gn_coord)
         data2 = self._calculate_collected_data(gn_coord, fop, gn_coord)
         return data1 + data2
-    

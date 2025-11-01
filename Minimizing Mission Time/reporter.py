@@ -94,7 +94,7 @@ def generate_flight_log_report(
             for idx in range(len(report_data) - 1, -1, -1):
                 if report_data[idx]['Method'] == 'Convex':
                     last_convex_index = idx
-                    break
+                    break 
             if last_convex_index != -1:
                 report_data[last_convex_index]['Fly_Back_Time (s)'] = fly_back_time
 
@@ -116,3 +116,4 @@ def generate_flight_log_report(
     report_path = os.path.join(output_dir, f'{run_prefix}_{uav_id}_flight_log_report.csv')
     df_final.to_csv(report_path, index=False, float_format='%.2f')
     print(f"\nDetailed flight log report saved to: {os.path.basename(report_path)}")
+    
