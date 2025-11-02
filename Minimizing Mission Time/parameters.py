@@ -23,22 +23,22 @@ from typing import Tuple, Dict
 
 # The width of the square simulation area. The simulation space is a 2D plane
 # from (0, 0) to (AREA_WIDTH, AREA_HEIGHT).
-AREA_WIDTH = 1200.0  # meters 2000
+AREA_WIDTH = 2000.0  # meters 2000
 
 # The height of the square simulation area. Typically same as AREA_WIDTH.
-AREA_HEIGHT = 1200.0 # meters
+AREA_HEIGHT = 2000.0 # meters
 
 
 
 
 # The total number of Ground Nodes (GNs) that need their data collected (N).
-NUM_GNS =3 # integer
+NUM_GNS =12 # integer
 
 # The total number of Unmanned Aerial Vehicles (UAVs) for the mission (M).
 NUM_UAVS = 1 # integer
 
 # The 2D coordinates of the data center. UAVs start and end here.
-DATA_CENTER_POS: Tuple[float, float] = (600.0, 600.0) # meters
+DATA_CENTER_POS: Tuple[float, float] = (1000.0, 1000.0) # meters
 
 # ==============================================================================
 # Section 2: UAV Physical Parameters

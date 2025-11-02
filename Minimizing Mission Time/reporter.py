@@ -53,7 +53,8 @@ def generate_flight_log_report(
                 'Fly_IN_Distance (m)': fly_in_dist,
                 'Collection_Time (s)': collection_time,
                 'Collection_Distance (m)': collection_dist,
-                'Fly_Back_Time (s)': 0.0 # Default to 0 for all but the last entry
+                'Fly_Back_Time (s)': 0.0,
+                'Fly_Back_Distance (m)': 0.0 
             })
             previous_fop = segment['fop']
             
@@ -79,7 +80,8 @@ def generate_flight_log_report(
                 'Fly_IN_Distance (m)': fly_in_dist,
                 'Collection_Time (s)': collection_time,
                 'Collection_Distance (m)': collection_dist,
-                'Fly_Back_Time (s)': 0.0 # Default to 0
+                'Fly_Back_Time (s)': 0.0,
+                'Fly_Back_Distance (m)': 0.0 
             })
             previous_eo = segment['end']
 
@@ -107,8 +109,10 @@ def generate_flight_log_report(
         last_collection_segment_v = [s for s in v_shaped_segments if s['type'] == 'collection'][last_gn_sequence_index]
         last_fop_v = last_collection_segment_v['fop']
         
-        fly_back_time_v = np.linalg.norm(data_center_pos - last_fop_v) / uav_speed
+        fly_back_dist_v = np.linalg.norm(data_center_pos - last_fop_v)
+        fly_back_time_v = fly_back_dist_v / uav_speed
         df.loc[last_v_shaped_row_index, 'Fly_Back_Time (s)'] = fly_back_time_v
+        df.loc[last_v_shaped_row_index, 'Fly_Back_Distance (m)'] = fly_back_dist_v
 
     if 'Convex' in df['Method'].values:
         # Find the index of the row with the highest 'Sequence' number for Convex
@@ -119,9 +123,10 @@ def generate_flight_log_report(
         last_collection_segment_c = convex_result['collection_segments'][last_gn_sequence_index_c]
         last_eo_c = last_collection_segment_c['end']
 
-        fly_back_time_c = np.linalg.norm(data_center_pos - last_eo_c) / uav_speed
+        fly_back_dist_c = np.linalg.norm(data_center_pos - last_eo_c)
+        fly_back_time_c = fly_back_dist_c / uav_speed
         df.loc[last_convex_row_index, 'Fly_Back_Time (s)'] = fly_back_time_c
-    # <<< MODIFICATION END >>>
+        df.loc[last_convex_row_index, 'Fly_Back_Distance (m)'] = fly_back_dist_c
 
     df = df.sort_values(by=['Method', 'Sequence'])
     
@@ -129,7 +134,7 @@ def generate_flight_log_report(
     cols = ['Method', 'Sequence', 'GN_Index', 
             'Fly_IN_Time (s)', 'Fly_IN_Distance (m)', 
             'Collection_Time (s)', 'Collection_Distance (m)', 
-            'Fly_Back_Time (s)']
+            'Fly_Back_Time (s)', 'Fly_Back_Distance (m)']
     df_final = df.reindex(columns=cols) # Use reindex to handle missing columns gracefully
 
     report_path = os.path.join(output_dir, f'{run_prefix}_{uav_id}_flight_log_report.csv')
