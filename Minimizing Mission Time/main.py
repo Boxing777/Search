@@ -178,7 +178,8 @@ def run_single_simulation(run_prefix: str, output_dir: str):
                         min_total_leg_time = total_leg_time
                         best_leg_config = {
                             'fip': fip, 'fop': fop, 'oh': optimal_oh,
-                            'service_time': collection_time # For overlapping, service time is just collection time
+                            'flight_time_in': 0.0, # <<< ADD THIS for consistency
+                            'collection_time': collection_time # <<< ADD THIS for consistency
                         }
             else:
                 # --- STANDARD HANDLING FOR NON-OVERLAPPING REGIONS (Our previous corrected logic) ---
@@ -208,7 +209,8 @@ def run_single_simulation(run_prefix: str, output_dir: str):
                             min_total_leg_time = total_leg_time
                             best_leg_config = {
                                 'fip': fip, 'fop': fop, 'oh': optimal_oh,
-                                'service_time': flight_time_in + collection_time
+                                'flight_time_in': flight_time_in, # <<< ADD THIS
+                                'collection_time': collection_time # <<< ADD THIS
                             }
 
             if not best_leg_config:
@@ -220,14 +222,22 @@ def run_single_simulation(run_prefix: str, output_dir: str):
                 best_leg_config = {'fip': oh, 'fop': oh, 'oh': oh, 'service_time': min_service_time_for_gn}
 
             # Accumulate the actual time spent (service time for this GN)
-            current_uav_time += best_leg_config['service_time']
+            leg_flight_time_in = best_leg_config['flight_time_in']
+            leg_collection_time = best_leg_config['collection_time']
+            
+            current_uav_time += leg_flight_time_in + leg_collection_time
+            
+            # For reporting and data structure, create the service_time key
+            best_leg_config['service_time'] = leg_flight_time_in + leg_collection_time
+            
             # The FOP from the best configuration becomes the SP for the next iteration
             previous_fop = best_leg_config['fop']
             
             uav_path_segments.extend([{'type': 'flight', 'start': sp, 'end': best_leg_config['fip']},
                                       {'type': 'collection', **best_leg_config}])
             
-            print(f"    -> Optimized for GN {gn_index}. Service Time: {best_leg_config['service_time']:.2f}s. New FOP: {np.round(previous_fop, 1)}")
+            # The printed "Service Time" should reflect the total time for this leg
+            print(f"    -> Optimized for GN {gn_index}. Leg Time (t_in+t_collect): {leg_flight_time_in + leg_collection_time:.2f}s. New FOP: {np.round(previous_fop, 1)}")
 
         # <<< FUNDAMENTAL CORRECTION OF THE JOFC LOOP ENDS HERE >>>
 
