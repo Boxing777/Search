@@ -14,6 +14,9 @@ import os
 import sys
 from datetime import datetime
 import traceback
+import pandas as pd
+import reporter
+
 
 # Import custom modules
 import parameters as params
@@ -71,12 +74,33 @@ def run_single_simulation(run_prefix: str, output_dir: str):
     print("\n[Step 1/5] Initializing simulation environment...")
 
     traj_optimizer = TrajectoryOptimizer(params.__dict__)
+    
+    rate_at_edge = traj_optimizer.get_rate_at_comm_edge()
+
+    # To calculate the benchmark C_f_max, we define a standard diameter path
+    D = traj_optimizer.comm_radius_d
+    # Assume a virtual GN at origin for this calculation
+    virtual_gn_coord = np.array([0.0, 0.0])
+    # FIP and FOP are at the ends of the diameter
+    fip_benchmark = np.array([-D, 0.0])
+    fop_benchmark = np.array([D, 0.0])
+    
+    # Calculate the max capacity on this ideal path
+    c_f_max = traj_optimizer.calculate_fm_max_capacity(fip_benchmark, fop_benchmark, virtual_gn_coord)
+    
+    print(f"\n--- Key Performance Indicators ---")
+    print(f"Communication Radius (D): {traj_optimizer.comm_radius_d:.2f} meters.")
+    print(f"Data Rate at GN Center (max): {traj_optimizer.hover_datarate / 1e6:.2f} Mbps.")
+    print(f"Data Rate at GN Edge (min):   {rate_at_edge / 1e6:.2f} Mbps.")
+    print(f"Max Data in FM Mode (C_f_max): {c_f_max / 1e6:.2f} Mbits.") 
+    print(f"---------------------------------")
+    
     comm_radius = traj_optimizer.comm_radius_d
     sim_env = SimulationEnvironment(params, comm_radius=comm_radius)
     
     print(f"Environment created: {params.AREA_WIDTH}x{params.AREA_HEIGHT}m area with {params.NUM_GNS} GNs.")
 
-    required_data_per_gn = 90 * 1e6 # Set to a high value to see V-shapes data size
+    required_data_per_gn = 24 * 1e6 # Set to a high value to see V-shapes data size
     print(f"Data requirement per GN set to {required_data_per_gn / 1e6:.0f} Mbits.")
     
     print("\n[Step 2/5] Running Mission Allocation (Genetic Algorithm)...")
@@ -123,89 +147,87 @@ def run_single_simulation(run_prefix: str, output_dir: str):
             min_total_leg_time = float('inf')
             best_leg_config = {}
             
-            # --- Check for Overlapping Case ---
-            # Is the start point (previous FOP) already inside the current GN's comm range?
-            if np.linalg.norm(sp - current_gn_coord) <= comm_radius:
-                # --- SPECIAL HANDLING FOR OVERLAPPING REGIONS (Paper's explicit instruction) ---
-                # FIP is forced to be the same as SP. t_flight_in is 0.
-                fip = sp
-                flight_time_in = 0.0
-                
-                # The search problem degenerates to a 1D search for the best FOP.
-                num_angles = 36 # More points for 1D search
+            # --- Determine if this is an overlapping case ---
+            is_overlapping = np.linalg.norm(sp - current_gn_coord) <= comm_radius
+            
+            # --- Unified Search Logic for FIP and FOP candidates ---
+            if is_overlapping:
+                # FIP is fixed, only search for FOP
+                fip_candidates = [sp]
+                flight_time_in_base = 0.0
+            else:
+                # Standard non-overlapping case, search both FIP and FOP
+                num_angles = 36 # You can adjust this for precision vs. speed
                 angles = np.linspace(0, 2 * np.pi, num_angles, endpoint=False)
-                fop_candidates = [current_gn_coord + comm_radius * np.array([np.cos(a), np.sin(a)]) for a in angles]
+                fip_candidates = [current_gn_coord + comm_radius * np.array([np.cos(a), np.sin(a)]) for a in angles]
 
+            num_angles_fop = 36
+            angles_fop = np.linspace(0, 2 * np.pi, num_angles_fop, endpoint=False)
+            fop_candidates = [current_gn_coord + comm_radius * np.array([np.cos(a), np.sin(a)]) for a in angles_fop]
+            
+            for fip in fip_candidates:
+                # For non-overlapping, this is the flight time from the previous FOP to the current FIP
+                flight_time_in = np.linalg.norm(sp - fip) / params.UAV_MAX_SPEED if not is_overlapping else 0.0
+                
                 for fop in fop_candidates:
-                    # Objective function is now simpler
+                    # Calculate max data capacity for this FIP/FOP pair
                     c_max = traj_optimizer.calculate_fm_max_capacity(fip, fop, current_gn_coord)
                     
+                    # Determine collection mode (FM or HM) and calculate theoretical collection time
                     if required_data_per_gn <= c_max:
-                        optimal_oh, collection_time = traj_optimizer.find_optimal_fm_trajectory(
-                            fip, fop, current_gn_coord, required_data_per_gn, is_overlapping=True)
+                        # FM Mode
+                        optimal_oh, collection_time_theoretical = traj_optimizer.find_optimal_fm_trajectory(
+                            fip, fop, current_gn_coord, required_data_per_gn, is_overlapping=is_overlapping)
                     else:
+                        # HM Mode
                         optimal_oh = current_gn_coord
                         collection_flight_time = (np.linalg.norm(fip - optimal_oh) + np.linalg.norm(optimal_oh - fop)) / params.UAV_MAX_SPEED
                         hover_time = (required_data_per_gn - c_max) / traj_optimizer.hover_datarate if traj_optimizer.hover_datarate > 0 else float('inf')
-                        collection_time = collection_flight_time + hover_time
+                        collection_time_theoretical = collection_flight_time + hover_time
 
+                    # +++ KEY CORRECTION: APPLY PHYSICAL TIME CONSTRAINT +++
+                    physical_collection_dist = np.linalg.norm(optimal_oh - fip) + np.linalg.norm(fop - optimal_oh)
+                    physical_collection_time = physical_collection_dist / params.UAV_MAX_SPEED
+                    collection_time_final = max(collection_time_theoretical, physical_collection_time)
+                    # ++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+                    # Calculate the flight time to the *next* anchor point
                     flight_time_out = np.linalg.norm(next_target_anchor - fop) / params.UAV_MAX_SPEED
-                    total_leg_time = collection_time + flight_time_out # t_flight_in is 0
-
+                    
+                    # The objective function for JOFC
+                    total_leg_time = flight_time_in + collection_time_final + flight_time_out
+                    
                     if total_leg_time < min_total_leg_time:
                         min_total_leg_time = total_leg_time
                         best_leg_config = {
                             'fip': fip, 'fop': fop, 'oh': optimal_oh,
-                            'service_time': collection_time # For overlapping, service time is just collection time
+                            'flight_time_in': flight_time_in,
+                            'collection_time': collection_time_final # Store the corrected time
                         }
-            else:
-                # --- STANDARD HANDLING FOR NON-OVERLAPPING REGIONS (Our previous corrected logic) ---
-                num_angles = 36
-                angles = np.linspace(0, 2 * np.pi, num_angles, endpoint=False)
-                fip_candidates = [current_gn_coord + comm_radius * np.array([np.cos(a), np.sin(a)]) for a in angles]
-                fop_candidates = [current_gn_coord + comm_radius * np.array([np.cos(a), np.sin(a)]) for a in angles]
-                
-                for fip in fip_candidates:
-                    for fop in fop_candidates:
-                        flight_time_in = np.linalg.norm(sp - fip) / params.UAV_MAX_SPEED
-                        c_max = traj_optimizer.calculate_fm_max_capacity(fip, fop, current_gn_coord)
-                        
-                        if required_data_per_gn <= c_max:
-                            optimal_oh, collection_time = traj_optimizer.find_optimal_fm_trajectory(
-                                fip, fop, current_gn_coord, required_data_per_gn, is_overlapping=False)
-                        else:
-                            optimal_oh = current_gn_coord
-                            collection_flight_time = (np.linalg.norm(fip - optimal_oh) + np.linalg.norm(optimal_oh - fop)) / params.UAV_MAX_SPEED
-                            hover_time = (required_data_per_gn - c_max) / traj_optimizer.hover_datarate if traj_optimizer.hover_datarate > 0 else float('inf')
-                            collection_time = collection_flight_time + hover_time
-
-                        flight_time_out = np.linalg.norm(next_target_anchor - fop) / params.UAV_MAX_SPEED
-                        total_leg_time = flight_time_in + collection_time + flight_time_out
-                        
-                        if total_leg_time < min_total_leg_time:
-                            min_total_leg_time = total_leg_time
-                            best_leg_config = {
-                                'fip': fip, 'fop': fop, 'oh': optimal_oh,
-                                'service_time': flight_time_in + collection_time
-                            }
 
             if not best_leg_config:
                 print(f"WARNING: Fallback for GN {gn_index}.")
                 oh = current_gn_coord
                 flight_time_in = np.linalg.norm(sp - oh) / params.UAV_MAX_SPEED
                 hover_time = required_data_per_gn / traj_optimizer.hover_datarate
-                min_service_time_for_gn = flight_time_in + hover_time
-                best_leg_config = {'fip': oh, 'fop': oh, 'oh': oh, 'service_time': min_service_time_for_gn}
+                best_leg_config = {'fip': oh, 'fop': oh, 'oh': oh, 
+                                   'flight_time_in': flight_time_in, 'collection_time': hover_time}
 
             # Accumulate the actual time spent (service time for this GN)
-            current_uav_time += best_leg_config['service_time']
+            service_time_for_leg = best_leg_config['flight_time_in'] + best_leg_config['collection_time']
+            current_uav_time += service_time_for_leg
+            
+            # For reporting and data structure, create the service_time key
+            best_leg_config['service_time'] = service_time_for_leg
+            
             # The FOP from the best configuration becomes the SP for the next iteration
             previous_fop = best_leg_config['fop']
             
             uav_path_segments.extend([{'type': 'flight', 'start': sp, 'end': best_leg_config['fip']},
                                       {'type': 'collection', **best_leg_config}])
             
-            print(f"    -> Optimized for GN {gn_index}. Service Time: {best_leg_config['service_time']:.2f}s. New FOP: {np.round(previous_fop, 1)}")
+            # The printed "Service Time" should reflect the total time for this leg
+            print(f"    -> Optimized for GN {gn_index}. Leg Time (t_in+t_collect): {service_time_for_leg:.2f}s. New FOP: {np.round(previous_fop, 1)}")
 
         # <<< FUNDAMENTAL CORRECTION OF THE JOFC LOOP ENDS HERE >>>
 
@@ -234,9 +256,21 @@ def run_single_simulation(run_prefix: str, output_dir: str):
             
             # Determine if hovering is needed
             data_shortfall = required_data_per_gn - data_collected_on_segment
+            
+            collection_flight_time = np.linalg.norm(segment['end'] - segment['start']) / params.UAV_MAX_SPEED
+            hover_time = 0.0
+
             if data_shortfall > 0:
-                hover_time = data_shortfall / traj_optimizer.hover_datarate if traj_optimizer.hover_datarate > 0 else float('inf')
-                convex_total_hover_time += hover_time
+                # hover_time = data_shortfall / traj_optimizer.hover_datarate if traj_optimizer.hover_datarate > 0 else float('inf')
+                # convex_total_hover_time += hover_time
+                exit_point_Eo = segment['end']
+                rate_at_Eo = traj_optimizer.calculate_hover_rate_at_point(exit_point_Eo, gn_coord)
+                hover_time = data_shortfall / rate_at_Eo if rate_at_Eo > 1e-6 else float('inf')
+                
+            convex_total_hover_time += hover_time
+            
+            # Add detailed time to the segment dict for the reporter module to use later
+            segment['Total_Collection_Time (s)'] = collection_flight_time + hover_time
         
         # The total fair time is the flight time plus any required hover time
         convex_flight_time = convex_result['length'] / params.UAV_MAX_SPEED
@@ -244,6 +278,17 @@ def run_single_simulation(run_prefix: str, output_dir: str):
         convex_mission_times[uav_id] = convex_actual_mission_time
         
         print(f"     Convex Path -> Flight Time: {convex_flight_time:.2f}s, Required Hover Time: {convex_total_hover_time:.2f}s, TOTAL FAIR TIME: {convex_actual_mission_time:.2f}s")
+
+        if gn_indices_route:
+            reporter.generate_flight_log_report( # Changed function name
+                run_prefix=run_prefix,
+                output_dir=output_dir,
+                uav_id=uav_id,
+                v_shaped_segments=final_trajectories.get(uav_id, []),
+                convex_result=convex_result,
+                data_center_pos=sim_env.data_center_pos,
+                uav_speed=params.UAV_MAX_SPEED
+            )
 
     print("\n[Step 4/5] Analyzing final results...")
     v_shaped_path_lengths = {}
@@ -282,7 +327,7 @@ def run_single_simulation(run_prefix: str, output_dir: str):
 
 # --- Main Entry Point for Batch Execution (No changes from your version) ---
 if __name__ == "__main__":
-    NUMBER_OF_RUNS = 100 # Set to 1 for testing the fix
+    NUMBER_OF_RUNS = 200 # Set to 1 for testing the fix
     BASE_RESULTS_DIR = "simulation_results"
     
     if not os.path.exists(BASE_RESULTS_DIR):

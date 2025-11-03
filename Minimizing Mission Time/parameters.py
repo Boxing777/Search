@@ -23,7 +23,7 @@ from typing import Tuple, Dict
 
 # The width of the square simulation area. The simulation space is a 2D plane
 # from (0, 0) to (AREA_WIDTH, AREA_HEIGHT).
-AREA_WIDTH = 2000.0  # meters
+AREA_WIDTH = 2000.0  # meters 2000
 
 # The height of the square simulation area. Typically same as AREA_WIDTH.
 AREA_HEIGHT = 2000.0 # meters
@@ -50,7 +50,7 @@ DATA_CENTER_POS: Tuple[float, float] = (1000.0, 1000.0) # meters
 UAV_ALTITUDE = 50.0 # meters
 
 # The maximum cruising speed of the UAVs (v_max). Assumed travel speed between zones.
-UAV_MAX_SPEED = 25.0 # meters/second
+UAV_MAX_SPEED = 20.0 # meters/second
 
 # The total energy budget available for each UAV for the entire mission (Eth).
 UAV_ENERGY_BUDGET = 5e5 # Joules

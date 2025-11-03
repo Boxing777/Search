@@ -109,10 +109,36 @@ def plot_final_comparison_trajectories(gns: np.ndarray, data_center_pos: Tuple[f
                 if segment.get('mode') == 'HM':
                     ax.plot(oh[0], oh[1], 'o', color=color, markersize=8, markeredgecolor='black')
                 sequence_counter += 1
+                
+    so_label_added = False
+    eo_label_added = False
     for i, (uav_id, path) in enumerate(convex_trajectories.items()):
         color = 'darkblue' if i==0 else 'darkgreen'
         if len(path) > 0:
-            ax.plot(path[:, 0], path[:, 1], color=color, linestyle='--', linewidth=2.0, marker='x', markersize=6, label=f'{uav_id} Convex (Shortest Path)')
+            # 1. Plot the full path line without markers, but add a label for the legend
+            ax.plot(path[:, 0], path[:, 1], color=color, linestyle=':', linewidth=2.0, 
+                    label=f'{uav_id} Convex (Shortest Path)')
+
+            # 2. Extract So and Eo points
+            # Path structure is [DC, So_0, Eo_0, So_1, Eo_1, ..., DC]
+            # So points are at indices 1, 3, 5, ...
+            so_points = path[1:-1:2]
+            # Eo points are at indices 2, 4, 6, ...
+            eo_points = path[2:-1:2]
+
+            # 3. Plot So points with 'x' markers
+            if len(so_points) > 0:
+                ax.plot(so_points[:, 0], so_points[:, 1], 'x', color='green', markersize=8, 
+                        markeredgewidth=2, label='Start of Collection (So)' if not so_label_added else "", 
+                        zorder=5)
+                so_label_added = True
+
+            # 4. Plot Eo points with 'o' markers
+            if len(eo_points) > 0:
+                ax.plot(eo_points[:, 0], eo_points[:, 1], 'o', color='purple', markersize=8,
+                        fillstyle='none', markeredgewidth=2, label='End of Collection (Eo)' if not eo_label_added else "",
+                        zorder=5)
+                eo_label_added = True
     handles, labels = ax.get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
     ax.legend(by_label.values(), by_label.keys(), fontsize='large')
@@ -141,6 +167,49 @@ def plot_final_trajectories(gns: np.ndarray, data_center_pos: Tuple[float, float
         comm_radius=comm_radius,
         title=title
     )
+    
+
+def plot_convex_path_details(gns: np.ndarray, data_center_pos: Tuple[float, float],
+                             convex_results: Dict, area_width: float, area_height: float,
+                             comm_radius: float, save_path: str = None,
+                             title: str = "Convex Path Details"):
+    """
+    Visualizes the detailed convex-optimized path, highlighting So and Eo points.
+    """
+    fig, ax = plt.subplots(figsize=(12, 12))
+    plot_gn_environment(ax, gns, data_center_pos, area_width, area_height, comm_radius)
+
+    for i, (uav_id, path) in enumerate(convex_results.items()):
+        color = 'darkblue'
+        path_np = np.array(path)
+        if len(path_np) > 0:
+            # Plot the full path
+            ax.plot(path_np[:, 0], path_np[:, 1], color=color, linestyle='--', linewidth=1.5,
+                    label=f'{uav_id} Convex Path')
+            
+            # Highlight So and Eo points
+            # Path structure is [DC, So_0, Eo_0, So_1, Eo_1, ..., So_N-1, Eo_N-1, DC]
+            so_points = path_np[1:-1:2] # Selects So_0, So_1, ...
+            eo_points = path_np[2:-1:2] # Selects Eo_0, Eo_1, ...
+            
+            ax.plot(so_points[:, 0], so_points[:, 1], 'x', color='green', markersize=8, label='Start of Collection (So)')
+            ax.plot(eo_points[:, 0], eo_points[:, 1], 'o', color='purple', markersize=6, fillstyle='none', markeredgewidth=2, label='End of Collection (Eo)')
+
+            # Add arrows to show direction
+            for j in range(len(path_np) - 1):
+                _add_arrow_to_line(ax, path_np[j], path_np[j+1], color)
+
+    ax.set_title(title)
+    handles, labels = ax.get_legend_handles_labels()
+    by_label = dict(zip(labels, handles))
+    ax.legend(by_label.values(), by_label.keys())
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path)
+        plt.close(fig)
+    else:
+        plt.show()
 
 
 def plot_performance_curve(x_data: Dict[str, List], y_data: Dict[str, List],
