@@ -1,137 +1,129 @@
-# reporter.py (Version 8: Corrected Fly-Back Time Logic)
 # ==============================================================================
-#                      Simulation Report Generator
+#                      Simulation Environment Generation
+#
+# File Objective:
+# This file establishes the physical simulation world, ensuring all GNs and
+# their communication ranges are fully contained within the area, do not
+# cover the Data Center, and maintain a minimum inter-node distance.
 # ==============================================================================
 
+# Import necessary libraries
 import numpy as np
-import pandas as pd
-import os
-from typing import Dict, List
+from typing import Optional, List
 
-def generate_flight_log_report(
-    run_prefix: str,
-    output_dir: str,
-    uav_id: str,
-    v_shaped_segments: List[Dict],
-    convex_result: Dict,
-    data_center_pos: np.ndarray,
-    uav_speed: float,
-    **kwargs
-) -> None:
+# --- Core Functionality ---
+
+def generate_gns(num_gns: int, area_width: float, area_height: float, 
+                   margin: float, data_center_pos: np.ndarray, 
+                   seed: Optional[int] = None) -> np.ndarray:
     """
-    Generates a detailed flight log CSV report with specific distance and time breakdowns.
+    Generates 2D coordinates for GNs with three constraints:
+    1. GNs and their comm range are within the simulation area (margin from edge).
+    2. GNs' comm ranges do not cover the data center (margin from DC).
+    3. The distance between any two GNs is greater than 0.8 * margin.
+
+    Args:
+        num_gns (int): The total number of Ground Nodes (N).
+        area_width (float): The width of the main area.
+        area_height (float): The height of the main area.
+        margin (float): The safety margin from edges and data center (comm_radius).
+        data_center_pos (np.ndarray): The coordinates of the data center.
+        seed (Optional[int], optional): A seed for the random number generator.
+
+    Returns:
+        np.ndarray: An array of shape (num_gns, 2) with the (x, y) coordinates.
     """
-    report_data = []
+    if seed is not None:
+        np.random.seed(seed)
 
-    # --- 1. Process V-Shaped Trajectory Data ---
-    if v_shaped_segments:
-        collection_segments_v = [s for s in v_shaped_segments if s['type'] == 'collection']
-        
-        previous_fop = data_center_pos
-        for i, segment in enumerate(collection_segments_v):
-            current_fip = v_shaped_segments[i * 2]['end']
-            
-            fly_in_dist = np.linalg.norm(current_fip - previous_fop)
-            fly_in_time = fly_in_dist / uav_speed
-            
-            collection_dist = np.linalg.norm(segment['oh'] - segment['fip']) + np.linalg.norm(segment['fop'] - segment['oh'])
-            
-            is_overlapping = (fly_in_dist < 1e-6)
-            # service_time from main.py is correct, but we need to extract collection_time for the report.
-            # In non-overlapping, service_time = flight_in + collection.
-            # In overlapping, service_time = collection.
-            # So, collection_time can be derived from service_time and the calculated flight_in_time.
-            calculated_flight_in_time_from_service = segment['service_time'] - segment['collection_time'] if 'collection_time' in segment and not is_overlapping else 0
-            collection_time = segment.get('collection_time', segment['service_time'] - calculated_flight_in_time_from_service)
-
-            
-            report_data.append({
-                'Method': 'V-Shaped',
-                'Sequence': i + 1,
-                'GN_Index': segment.get('gn_index', 'N/A'),
-                'Fly_IN_Time (s)': fly_in_time,
-                'Fly_IN_Distance (m)': fly_in_dist,
-                'Collection_Time (s)': collection_time,
-                'Collection_Distance (m)': collection_dist,
-                'Fly_Back_Time (s)': 0.0 # Default to 0 for all but the last entry
-            })
-            previous_fop = segment['fop']
-            
-    # --- 2. Process Convex Trajectory Data ---
-    if convex_result and convex_result.get('collection_segments'):
-        collection_segments_c = convex_result['collection_segments']
-        previous_eo = data_center_pos
-        
-        for i, segment in enumerate(collection_segments_c):
-            so_point, eo_point = segment['start'], segment['end']
-            
-            fly_in_dist = np.linalg.norm(so_point - previous_eo)
-            fly_in_time = fly_in_dist / uav_speed
-            
-            collection_dist = np.linalg.norm(eo_point - so_point)
-            collection_time = segment.get('Total_Collection_Time (s)', 0)
-
-            report_data.append({
-                'Method': 'Convex',
-                'Sequence': i + 1,
-                'GN_Index': segment['gn_index'],
-                'Fly_IN_Time (s)': fly_in_time,
-                'Fly_IN_Distance (m)': fly_in_dist,
-                'Collection_Time (s)': collection_time,
-                'Collection_Distance (m)': collection_dist,
-                'Fly_Back_Time (s)': 0.0 # Default to 0
-            })
-            previous_eo = segment['end']
-
-    # --- 3. Generate and Save Final Report ---
-    if not report_data:
-        print("No data to generate report.")
-        return
-
-    df = pd.DataFrame(report_data)
+    gn_positions: List[np.ndarray] = []
     
-    # <<< MODIFICATION START: Correct and robust calculation of Fly_Back_Time >>>
-    # Original flawed logic is commented out below for reference
-    # # if report_data:
-    # #     fly_back_time = np.linalg.norm(data_center_pos - previous_fop) / uav_speed
-    # #     report_data[-1]['Fly_Back_Time (s)'] = fly_back_time
-    # # ... (and the complex index search for Convex) ...
+    # Add a max_attempts counter for robustness to prevent infinite loops.
+    max_attempts = num_gns * 1000 
+    
+    # Define the valid generation area, constrained by the margin
+    low_x, high_x = margin, area_width - margin
+    low_y, high_y = margin, area_height - margin
 
-    # New robust logic:
-    if 'V-Shaped' in df['Method'].values:
-        # Find the index of the row with the highest 'Sequence' number for V-Shaped
-        last_v_shaped_row_index = df.loc[df['Method'] == 'V-Shaped', 'Sequence'].idxmax()
+    if low_x >= high_x or low_y >= high_y:
+        raise ValueError(f"Margin ({margin}) is too large for the area dimensions ({area_width}x{area_height}). Cannot generate GNs.")
         
-        # Get the corresponding FOP from the original data structure
-        last_gn_sequence_index = df.loc[last_v_shaped_row_index, 'Sequence'] - 1
-        last_collection_segment_v = [s for s in v_shaped_segments if s['type'] == 'collection'][last_gn_sequence_index]
-        last_fop_v = last_collection_segment_v['fop']
+    # <<< MODIFICATION START: The entire generation loop is modified >>>
+    # Define the minimum inter-node distance based on the new rule.
+    min_dist = 0.7 * margin
+
+    # Loop with max_attempts to generate nodes one by one with all checks.
+    for _ in range(max_attempts):
+        # Generate a candidate position within the allowed boundaries.
+        candidate_pos = np.array([
+            np.random.uniform(low_x, high_x),
+            np.random.uniform(low_y, high_y)
+        ])
         
-        fly_back_time_v = np.linalg.norm(data_center_pos - last_fop_v) / uav_speed
-        df.loc[last_v_shaped_row_index, 'Fly_Back_Time (s)'] = fly_back_time_v
+        # Constraint 1: Check distance to data center. Must be > margin (D).
+        if np.linalg.norm(candidate_pos - data_center_pos) <= margin:
+            continue # Too close to data center, generate a new candidate.
 
-    if 'Convex' in df['Method'].values:
-        # Find the index of the row with the highest 'Sequence' number for Convex
-        last_convex_row_index = df.loc[df['Method'] == 'Convex', 'Sequence'].idxmax()
+        # Constraint 2: Check distance to already placed GNs.
+        is_valid_spacing = True
+        for existing_pos in gn_positions:
+            # Must be > min_dist (0.8 * D).
+            if np.linalg.norm(candidate_pos - existing_pos) < min_dist:
+                is_valid_spacing = False
+                break # Too close to another GN, generate a new candidate.
+        
+        # If both spacing constraints are met, accept the point.
+        if is_valid_spacing:
+            gn_positions.append(candidate_pos)
+            # If we have generated enough GNs, exit the loop.
+            if len(gn_positions) == num_gns:
+                print(f"Successfully generated {num_gns} GNs with min inter-node distance > {min_dist:.2f}m.")
+                return np.array(gn_positions)
 
-        # Get the corresponding Eo from the original data structure
-        last_gn_sequence_index_c = df.loc[last_convex_row_index, 'Sequence'] - 1
-        last_collection_segment_c = convex_result['collection_segments'][last_gn_sequence_index_c]
-        last_eo_c = last_collection_segment_c['end']
-
-        fly_back_time_c = np.linalg.norm(data_center_pos - last_eo_c) / uav_speed
-        df.loc[last_convex_row_index, 'Fly_Back_Time (s)'] = fly_back_time_c
+    # If the loop finishes without generating enough GNs, it means it's too difficult.
+    raise RuntimeError(f"Failed to generate {num_gns} GNs after {max_attempts} attempts. "
+                       f"The area might be too small or the number of GNs too large "
+                       f"for the given constraints (D={margin:.2f}m, min_dist={min_dist:.2f}m).")
     # <<< MODIFICATION END >>>
 
-    df = df.sort_values(by=['Method', 'Sequence'])
-    
-    # Reorder columns to match the requested format
-    cols = ['Method', 'Sequence', 'GN_Index', 
-            'Fly_IN_Time (s)', 'Fly_IN_Distance (m)', 
-            'Collection_Time (s)', 'Collection_Distance (m)', 
-            'Fly_Back_Time (s)']
-    df_final = df.reindex(columns=cols) # Use reindex to handle missing columns gracefully
 
-    report_path = os.path.join(output_dir, f'{run_prefix}_{uav_id}_flight_log_report.csv')
-    df_final.to_csv(report_path, index=False, float_format='%.2f')
-    print(f"\nDetailed flight log report saved to: {os.path.basename(report_path)}")
+# --- Class Structure for Environment Management ---
+
+class SimulationEnvironment:
+    """
+    A container for all static elements of the simulation world.
+    """
+    def __init__(self, params, comm_radius: float):
+        """
+        Constructs the SimulationEnvironment.
+
+        Args:
+            params: A module or object containing simulation parameters.
+            comm_radius (float): The communication radius, used as a margin.
+        """
+        self.area_width: float = params.AREA_WIDTH
+        self.area_height: float = params.AREA_HEIGHT
+        self.data_center_pos: np.ndarray = np.array(params.DATA_CENTER_POS)
+        
+        seed = getattr(params, 'RANDOM_SEED', None)
+
+        # <<< MODIFICATION: Updated the print statement for clarity >>>
+        print(f"Generating GNs with margin D={comm_radius:.2f}m from edges/DC and min inter-node dist > {0.8*comm_radius:.2f}m.")
+        
+        self.gn_positions: np.ndarray = generate_gns(
+            num_gns=params.NUM_GNS,
+            area_width=self.area_width,
+            area_height=self.area_height,
+            margin=comm_radius,
+            data_center_pos=self.data_center_pos,
+            seed=seed
+        )
+
+    def get_gn_position(self, gn_index: int) -> np.ndarray:
+        """
+        Retrieves the coordinates of a specific GN by its index.
+        """
+        if 0 <= gn_index < len(self.gn_positions):
+            return self.gn_positions[gn_index]
+        else:
+            raise IndexError(f"GN index {gn_index} is out of bounds.")
