@@ -24,6 +24,7 @@ from trajectory_optimizer import TrajectoryOptimizer
 from convex_trajectory_planner import ConvexTrajectoryPlanner
 from datetime import datetime
 from bob_planner import BOBPlanner
+from cmc_planner import CMCPlanner
 
 # --- Helper Class and Functions (No changes needed here) ---
 class Logger:
@@ -99,7 +100,7 @@ def run_single_simulation(run_prefix: str, output_dir: str):
     
     print(f"Environment created: {params.AREA_WIDTH}x{params.AREA_HEIGHT}m area with {params.NUM_GNS} GNs.")
 
-    required_data_per_gn = 40 * 1e6 # Set to a high value to see V-shapes data size
+    required_data_per_gn = 24 * 1e6 # Set to a high value to see V-shapes data size
     print(f"Data requirement per GN set to {required_data_per_gn / 1e6:.0f} Mbits.")
     
     print("\n[Step 2/5] Running Mission Allocation (Genetic Algorithm)...")
@@ -127,6 +128,11 @@ def run_single_simulation(run_prefix: str, output_dir: str):
         convex_planner=convex_planner
     )
     
+    cmc_planner = CMCPlanner(
+        traj_optimizer=traj_optimizer,
+        convex_planner=convex_planner
+    )
+    
     final_trajectories, uav_mission_times = {}, {}
     convex_trajectories, convex_path_lengths = {}, {}
     
@@ -134,6 +140,9 @@ def run_single_simulation(run_prefix: str, output_dir: str):
     
     bob_trajectories, bob_path_lengths = {}, {}
     bob_mission_times = {}
+    
+    cmc_mission_times = {}
+    cmc_plot_points = {}
 
     for uav_id, gn_indices_route in initial_assignment.items():
         if not gn_indices_route:
@@ -297,6 +306,13 @@ def run_single_simulation(run_prefix: str, output_dir: str):
         bob_trajectories[uav_id] = bob_result['segments'] 
         
         print(f"     BOB Mission Time: {bob_result['total_time']:.2f}s | Path Length: {bob_result['total_length']:.2f}m")
+        print("\n  -> Running CMC Planner for the same sequence...")
+        
+        cmc_result = cmc_planner.estimate_mission_time(gn_indices_route, required_data_per_gn)
+        cmc_mission_times[uav_id] = cmc_result['total_time']
+        cmc_plot_points[uav_id] = cmc_result['plot_points']
+        
+        print(f"     CMC Path    -> Flight Time: {cmc_result['flight_time']:.2f}s, Required Hover Time: {cmc_result['hover_time']:.2f}s, TOTAL FAIR TIME: {cmc_result['total_time']:.2f}s")
 
         if gn_indices_route:
             reporter.generate_flight_log_report( # Changed function name
@@ -320,6 +336,7 @@ def run_single_simulation(run_prefix: str, output_dir: str):
     system_mct_v_shaped = max(uav_mission_times.values()) if uav_mission_times else 0
     system_mct_convex = max(convex_mission_times.values()) if convex_mission_times else 0
     system_mct_bob = max(bob_mission_times.values()) if bob_mission_times else 0
+    system_mct_cmc = max(cmc_mission_times.values()) if cmc_mission_times else 0
     total_execution_time = time.time() - start_time
     
     print("\n--- Simulation Summary ---")
@@ -329,17 +346,18 @@ def run_single_simulation(run_prefix: str, output_dir: str):
             print(f"  V-Shaped Mission Time: {uav_mission_times.get(uav_id, 0):.2f}s | Path Length: {v_shaped_path_lengths.get(uav_id, 0):.2f}m")
             print(f"  Convex Mission Time:   {convex_mission_times.get(uav_id, 0):.2f}s | Path Length: {convex_path_lengths.get(uav_id, 0):.2f}m")
             print(f"  BOB Mission Time:      {bob_mission_times.get(uav_id, 0):.2f}s | Path Length: {bob_path_lengths.get(uav_id, 0):.2f}m")
+            print(f"  CMC Mission Time:      {cmc_mission_times.get(uav_id, 0):.2f}s | Path Length: {convex_path_lengths.get(uav_id, 0):.2f}m")
     
     print(f"\nSystem Mission Completion Time (MCT) for V-Shaped: {system_mct_v_shaped:.2f}s")
     print(f"System Mission Completion Time (MCT) for Convex:   {system_mct_convex:.2f}s")
-    print(f"System Mission Completion Time (MCT) for BOB:      {system_mct_bob:.2f}s")
+    print(f"System Mission Completion Time (MCT) for CMC:      {system_mct_cmc:.2f}s")
     print(f"Total script execution time: {total_execution_time:.2f}s")
     
     print("\n[Step 5/5] Visualizing final combined trajectories...")
     vis.plot_final_comparison_trajectories(
         gns=sim_env.gn_positions, data_center_pos=sim_env.data_center_pos,
         v_shaped_trajectories=final_trajectories, convex_trajectories=convex_trajectories,
-        bob_trajectories=bob_trajectories,area_width=params.AREA_WIDTH, 
+        bob_trajectories=bob_trajectories, cmc_plot_points=cmc_plot_points, area_width=params.AREA_WIDTH, 
         area_height=params.AREA_HEIGHT,comm_radius=traj_optimizer.comm_radius_d,
         save_path=os.path.join(output_dir, f'{run_prefix}_final_trajectories.png')
     )

@@ -87,6 +87,7 @@ def plot_final_comparison_trajectories(gns: np.ndarray, data_center_pos: Tuple[f
                                        v_shaped_trajectories: Dict[str, List[Dict]],
                                        convex_trajectories: Dict[str, np.ndarray],
                                        bob_trajectories: Dict[str, List[Dict]],
+                                       cmc_plot_points: Dict[str, Dict],
                                        area_width: float, area_height: float, comm_radius: float,
                                        save_path: str = None, title: str = "Final Optimized Trajectories Comparison"):
     fig, ax = plt.subplots(figsize=(14, 14))
@@ -140,27 +141,48 @@ def plot_final_comparison_trajectories(gns: np.ndarray, data_center_pos: Tuple[f
                         fillstyle='none', markeredgewidth=2, label='End of Collection (Eo)' if not eo_label_added else "",
                         zorder=5)
                 eo_label_added = True
-                
-    for i, (uav_id, segments) in enumerate(bob_trajectories.items()):
-        color = 'cyan' 
-        ax.plot([], [], color=color, linestyle='-.', linewidth=2.0, label=f'{uav_id} BOB')
-
-        if not segments: continue
-
-        previous_pos = data_center_pos
-
-        for segment in segments:
-            fip, oh, fop = np.array(segment['fip']), np.array(segment['oh']), np.array(segment['fop'])
-            
-            ax.plot([previous_pos[0], fip[0]], [previous_pos[1], fip[1]], color=color, linestyle='-.', linewidth=1.5, zorder=2)
-            
-            v_path = np.array([fip, oh, fop])
-            ax.plot(v_path[:, 0], v_path[:, 1], color=color, linestyle='-.', linewidth=1.5, marker='.', markersize=4, zorder=2)
-
-            previous_pos = fop 
+###              
+#    for i, (uav_id, segments) in enumerate(bob_trajectories.items()):
+#        color = 'cyan' 
+#        ax.plot([], [], color=color, linestyle='-.', linewidth=2.0, label=f'{uav_id} BOB')
+#
+#        if not segments: continue
+#
+#        previous_pos = data_center_pos
+#
+#        for segment in segments:
+#            fip, oh, fop = np.array(segment['fip']), np.array(segment['oh']), np.array(segment['fop'])
+#            
+#            ax.plot([previous_pos[0], fip[0]], [previous_pos[1], fip[1]], color=color, linestyle='-.', linewidth=1.5, zorder=2)
+#            
+#            v_path = np.array([fip, oh, fop])
+#            ax.plot(v_path[:, 0], v_path[:, 1], color=color, linestyle='-.', linewidth=1.5, marker='.', markersize=4, zorder=2)
+#
+#            previous_pos = fop 
+#        
+#        ax.plot([previous_pos[0], data_center_pos[0]], [previous_pos[1], data_center_pos[1]], color=color, linestyle='-.', linewidth=1.5, zorder=2)
+#          
+    
+    fip_cmc_added = False
+    fop_cmc_added = False
+    for uav_id, plot_data in cmc_plot_points.items():
+        fips = plot_data.get('fips', [])
+        fops = plot_data.get('fops', [])
         
-        ax.plot([previous_pos[0], data_center_pos[0]], [previous_pos[1], data_center_pos[1]], color=color, linestyle='-.', linewidth=1.5, zorder=2)
-           
+        if fips:
+            fips_np = np.array(fips)
+            #  FIP_cmc
+            ax.plot(fips_np[:, 0], fips_np[:, 1], '^', color='darkblue', markersize=10, 
+                    label='CMC FIP' if not fip_cmc_added else "", zorder=6)
+            fip_cmc_added = True
+            
+        if fops:
+            fops_np = np.array(fops)
+            # FOP_cmc
+            ax.plot(fops_np[:, 0], fops_np[:, 1], 's', color='darkorange', markersize=8,
+                    label='CMC FOP' if not fop_cmc_added else "", zorder=6)
+            fop_cmc_added = True
+    
     handles, labels = ax.get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
     ax.legend(by_label.values(), by_label.keys(), fontsize='large')
