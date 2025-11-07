@@ -172,15 +172,15 @@ def plot_final_comparison_trajectories(gns: np.ndarray, data_center_pos: Tuple[f
         if fips:
             fips_np = np.array(fips)
             #  FIP_cmc
-            ax.plot(fips_np[:, 0], fips_np[:, 1], '^', color='darkblue', markersize=10, 
-                    label='CMC FIP' if not fip_cmc_added else "", zorder=6)
+            ax.plot(fips_np[:, 0], fips_np[:, 1], '^', color='darkblue', markersize=12, fillstyle='none',  
+                    markeredgewidth=2, label='CMC FIP' if not fip_cmc_added else "", zorder=6)
             fip_cmc_added = True
             
         if fops:
             fops_np = np.array(fops)
             # FOP_cmc
-            ax.plot(fops_np[:, 0], fops_np[:, 1], 's', color='darkorange', markersize=8,
-                    label='CMC FOP' if not fop_cmc_added else "", zorder=6)
+            ax.plot(fops_np[:, 0], fops_np[:, 1], 's', color='darkorange', markersize=10, fillstyle='none',  
+                    markeredgewidth=2, label='CMC FOP' if not fop_cmc_added else "", zorder=6)
             fop_cmc_added = True
     
     handles, labels = ax.get_legend_handles_labels()

@@ -121,15 +121,14 @@ class CMCPlanner:
     def estimate_mission_time(self, ordered_gn_indices: List[int], required_data_per_gn: float) -> Dict:
         """
         Estimates the mission time for a given sequence using the CMC method.
-        ...
+        This version robustly handles all intersection cases.
         """
+        # --- This part is unchanged ---
         if not ordered_gn_indices:
-            # This part is unchanged
             return {"total_time": 0.0, "flight_time": 0.0, "hover_time": 0.0, "path_length": 0.0, "plot_points": {}}
 
         print("\n--- Estimating Mission Time with CMC (Convex-Maximal-Collection) Method ---")
 
-        # This part is unchanged
         convex_result = self.convex_planner.plan_shortest_path_for_sequence(ordered_gn_indices)
         if not convex_result["path"].any():
             return {"total_time": 0.0, "flight_time": 0.0, "hover_time": 0.0, "path_length": 0.0, "plot_points": {}}
@@ -142,88 +141,116 @@ class CMCPlanner:
         gns_coords = self.convex_planner.all_gns
         comm_radius = self.convex_planner.comm_radius
 
-        # Prepare lists for visualization points
         all_fips_cmc = []
         all_fops_cmc = []
 
         for gn_index in ordered_gn_indices:
             gn_coord = gns_coords[gn_index]
             
-            all_intersections = []
+            # --- START OF REVISED LOGIC ---
+
+            collection_segments = [] # Segments of the path that are inside the circle
+            
             for i in range(len(shortest_path) - 1):
                 p1, p2 = shortest_path[i], shortest_path[i+1]
+                p1_inside = np.linalg.norm(p1 - gn_coord) <= comm_radius
+                p2_inside = np.linalg.norm(p2 - gn_coord) <= comm_radius
+                
                 intersections = self._get_line_circle_intersections(p1, p2, gn_coord, comm_radius)
-                all_intersections.extend(intersections)
 
+                if p1_inside and p2_inside:
+                    # Case 1: The entire segment is inside the circle
+                    collection_segments.append((p1, p2))
+                elif p1_inside and not p2_inside:
+                    # Case 2: Path is exiting the circle. The segment is from p1 to the intersection.
+                    if intersections:
+                        collection_segments.append((p1, intersections[0]))
+                elif not p1_inside and p2_inside:
+                    # Case 3: Path is entering the circle. The segment is from the intersection to p2.
+                    if intersections:
+                        collection_segments.append((intersections[0], p2))
+                elif intersections:
+                    # Case 4: Path crosses the circle. The segment is between the two intersections.
+                    if len(intersections) == 2:
+                        # Sort intersections to ensure correct order
+                        dist1 = np.linalg.norm(intersections[0] - p1)
+                        dist2 = np.linalg.norm(intersections[1] - p1)
+                        if dist1 < dist2:
+                            collection_segments.append((intersections[0], intersections[1]))
+                        else:
+                            collection_segments.append((intersections[1], intersections[0]))
+            
             fip_cmc, fop_cmc = None, None
-            if len(all_intersections) >= 2:
-                # To sort intersections correctly, we find their progress along the path
-                unique_intersections = np.unique(np.array(all_intersections), axis=0)
+            data_collected_on_segment = 0
+            
+            if collection_segments:
+                # Find the true FIP and FOP from all collected segments
+                
+                # To find the first point (FIP), find the segment start point that appears earliest on the path
                 path_progress = []
                 current_path_dist = 0
+                all_collection_points = [p for seg in collection_segments for p in seg]
+
                 for i in range(len(shortest_path) - 1):
                     p_start, p_end = shortest_path[i], shortest_path[i+1]
-                    for point in unique_intersections:
+                    for point in all_collection_points:
                         proj_point = self._get_closest_point_on_segment(p_start, p_end, point)
                         if np.linalg.norm(proj_point - point) < 1e-6:
                              progress = current_path_dist + np.linalg.norm(proj_point - p_start)
-                             # Avoid adding duplicate points from shared segment endpoints
                              if not any(np.isclose(progress, p[0]) for p in path_progress):
                                 path_progress.append((progress, point))
                     current_path_dist += np.linalg.norm(p_end - p_start)
-
+                
                 if path_progress:
                     path_progress.sort(key=lambda x: x[0])
                     fip_cmc = path_progress[0][1]
                     fop_cmc = path_progress[-1][1]
-
-            data_collected_on_segment = 0
-            hover_time_for_gn = 0
-            
-            if fip_cmc is not None and fop_cmc is not None:
-                all_fips_cmc.append(fip_cmc)
-                all_fops_cmc.append(fop_cmc)
+                    all_fips_cmc.append(fip_cmc)
+                    all_fops_cmc.append(fop_cmc)
                 
-                # For simplicity, we assume the collection path is a straight line.
-                # A more precise method would integrate over the actual convex path segments
-                # that lie within the circle, but this is a good approximation.
-                data_collected_on_segment = self.traj_optimizer._calculate_collected_data(
-                    fip_cmc, fop_cmc, gn_coord
-                )
+                # Calculate total data by summing up collection over all segments inside
+                for seg_start, seg_end in collection_segments:
+                    data_collected_on_segment += self.traj_optimizer._calculate_collected_data(
+                        seg_start, seg_end, gn_coord
+                    )
             
+            # --- END OF REVISED LOGIC ---
+
+            hover_time_for_gn = 0
             data_shortfall = required_data_per_gn - data_collected_on_segment
             
             if data_shortfall > 0:
-                # +++ START OF MODIFICATION +++
                 hover_point = None
-                if fip_cmc is not None and fop_cmc is not None:
-                    # Case 1: A valid collection segment exists.
-                    # Find the closest point on this segment to the GN for hovering.
-                    hover_point = self._get_closest_point_on_segment(fip_cmc, fop_cmc, gn_coord)
-                else:
-                    # Case 2: No valid collection segment was found (fip_cmc is None).
-                    # The UAV must hover at the point on its *entire* path that is closest to the GN.
-                    min_dist_sq = float('inf')
-                    for i in range(len(shortest_path) - 1):
-                        p1, p2 = shortest_path[i], shortest_path[i+1]
-                        closest_p_on_segment = self._get_closest_point_on_segment(p1, p2, gn_coord)
+                min_dist_sq = float('inf')
+                
+                # Find the best hover point across all collection segments
+                if collection_segments:
+                    for seg_start, seg_end in collection_segments:
+                        closest_p_on_segment = self._get_closest_point_on_segment(seg_start, seg_end, gn_coord)
                         dist_sq = np.sum((closest_p_on_segment - gn_coord)**2)
                         if dist_sq < min_dist_sq:
                             min_dist_sq = dist_sq
                             hover_point = closest_p_on_segment
-                
-                # Calculate hover time using the determined hover_point
+                else:
+                    # If there are no collection segments, find the closest point on the entire path
+                    for i in range(len(shortest_path) - 1):
+                        p1, p2 = shortest_path[i], shortest_path[i+1]
+                        closest_p = self._get_closest_point_on_segment(p1, p2, gn_coord)
+                        dist_sq = np.sum((closest_p - gn_coord)**2)
+                        if dist_sq < min_dist_sq:
+                            min_dist_sq = dist_sq
+                            hover_point = closest_p
+
                 if hover_point is not None:
                     rate_at_hover_point = self.traj_optimizer.calculate_hover_rate_at_point(hover_point, gn_coord)
                     hover_time_for_gn = data_shortfall / rate_at_hover_point if rate_at_hover_point > 1e-6 else float('inf')
                 else:
-                    # This case should ideally not be reached, but as a fallback:
                     hover_time_for_gn = float('inf')
-                # +++ END OF MODIFICATION +++
                 
             total_hover_time += hover_time_for_gn
             print(f"    -> CMC for GN {gn_index}: Flight Collection Data: {data_collected_on_segment/1e6:.2f} Mbits, Required Hover Time: {hover_time_for_gn:.2f}s")
 
+        # --- This part is unchanged ---
         total_mission_time = total_flight_time + total_hover_time
         print("  - CMC time estimation complete.")
         
