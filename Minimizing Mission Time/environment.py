@@ -70,7 +70,7 @@ def generate_gns(num_gns: int, area_width: float, area_height: float,
         partner_candidate = None
         for _ in range(100): # Attempts to find a valid partner
             angle = np.random.uniform(0, 2 * np.pi)
-            dist = np.random.uniform(0.1 * margin, 1.8 * margin)
+            dist = np.random.uniform(0.7 * margin, 1.8 * margin)
             
             offset = np.array([np.cos(angle), np.sin(angle)]) * dist
             pos = anchor_candidate + offset
