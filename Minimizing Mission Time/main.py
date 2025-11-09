@@ -350,6 +350,7 @@ def run_single_simulation(run_prefix: str, output_dir: str):
     
     print(f"\nSystem Mission Completion Time (MCT) for V-Shaped: {system_mct_v_shaped:.2f}s")
     print(f"System Mission Completion Time (MCT) for Convex:   {system_mct_convex:.2f}s")
+    print(f"System Mission Completion Time (MCT) for BOB:   {system_mct_bob:.2f}s")
     print(f"System Mission Completion Time (MCT) for CMC:      {system_mct_cmc:.2f}s")
     print(f"Total script execution time: {total_execution_time:.2f}s")
     
@@ -369,6 +370,7 @@ def run_single_simulation(run_prefix: str, output_dir: str):
 if __name__ == "__main__":
     NUMBER_OF_RUNS = 200 # Set to 1 for testing the fix
     BASE_RESULTS_DIR = "simulation_results"
+    BATCH_SEED = 66 # You can choose any integer you like.
     
     if not os.path.exists(BASE_RESULTS_DIR):
         os.makedirs(BASE_RESULTS_DIR)
@@ -377,7 +379,7 @@ if __name__ == "__main__":
     batch_run_dir = os.path.join(BASE_RESULTS_DIR, f"run_{batch_timestamp}")
     os.makedirs(batch_run_dir)
     
-    print(f"Starting batch of {NUMBER_OF_RUNS} runs.")
+    print(f"Starting batch of {NUMBER_OF_RUNS} runs with Master Seed: {BATCH_SEED}.")
     print(f"All results will be saved in: {batch_run_dir}")
     
     original_stdout = sys.stdout
@@ -389,7 +391,9 @@ if __name__ == "__main__":
         sys.stdout = logger
         print(f"\n--- Starting {run_prefix.upper()} ---")
         try:
-            setattr(params, 'RANDOM_SEED', int(time.time()) + i)
+            run_seed = BATCH_SEED + i
+            setattr(params, 'RANDOM_SEED', run_seed)
+            print(f"Using random seed: {run_seed}") 
             run_single_simulation(run_prefix, batch_run_dir)
         except Exception as e:
             traceback.print_exc()

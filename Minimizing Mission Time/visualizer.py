@@ -141,27 +141,29 @@ def plot_final_comparison_trajectories(gns: np.ndarray, data_center_pos: Tuple[f
                         fillstyle='none', markeredgewidth=2, label='End of Collection (Eo)' if not eo_label_added else "",
                         zorder=5)
                 eo_label_added = True
-###              
-#    for i, (uav_id, segments) in enumerate(bob_trajectories.items()):
-#        color = 'cyan' 
-#        ax.plot([], [], color=color, linestyle='-.', linewidth=2.0, label=f'{uav_id} BOB')
-#
-#        if not segments: continue
-#
-#        previous_pos = data_center_pos
-#
-#        for segment in segments:
-#            fip, oh, fop = np.array(segment['fip']), np.array(segment['oh']), np.array(segment['fop'])
-#            
-#            ax.plot([previous_pos[0], fip[0]], [previous_pos[1], fip[1]], color=color, linestyle='-.', linewidth=1.5, zorder=2)
-#            
-#            v_path = np.array([fip, oh, fop])
-#            ax.plot(v_path[:, 0], v_path[:, 1], color=color, linestyle='-.', linewidth=1.5, marker='.', markersize=4, zorder=2)
-#
-#            previous_pos = fop 
-#        
-#        ax.plot([previous_pos[0], data_center_pos[0]], [previous_pos[1], data_center_pos[1]], color=color, linestyle='-.', linewidth=1.5, zorder=2)
-#          
+###
+       
+    for i, (uav_id, segments) in enumerate(bob_trajectories.items()):
+        color = 'cyan' 
+        ax.plot([], [], color=color, linestyle='-.', linewidth=2.0, label=f'{uav_id} BOB')
+
+        if not segments: continue
+
+        previous_pos = data_center_pos
+
+        for segment in segments:
+            fip, oh, fop = np.array(segment['fip']), np.array(segment['oh']), np.array(segment['fop'])
+            
+            ax.plot([previous_pos[0], fip[0]], [previous_pos[1], fip[1]], color=color, linestyle='-.', linewidth=1.5, zorder=2)
+            
+            v_path = np.array([fip, oh, fop])
+            ax.plot(v_path[:, 0], v_path[:, 1], color=color, linestyle='-.', linewidth=1.5, marker='.', markersize=4, zorder=2)
+
+            previous_pos = fop 
+        
+        ax.plot([previous_pos[0], data_center_pos[0]], [previous_pos[1], data_center_pos[1]], color=color, linestyle='-.', linewidth=1.5, zorder=2)
+    
+###        
     
     fip_cmc_added = False
     fop_cmc_added = False
