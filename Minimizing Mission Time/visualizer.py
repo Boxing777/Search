@@ -142,7 +142,7 @@ def plot_final_comparison_trajectories(gns: np.ndarray, data_center_pos: Tuple[f
                         zorder=5)
                 eo_label_added = True
 ###
-       
+        
     for i, (uav_id, segments) in enumerate(bob_trajectories.items()):
         color = 'cyan' 
         ax.plot([], [], color=color, linestyle='-.', linewidth=2.0, label=f'{uav_id} BOB')
@@ -165,25 +165,65 @@ def plot_final_comparison_trajectories(gns: np.ndarray, data_center_pos: Tuple[f
     
 ###        
     
-    fip_cmc_added = False
-    fop_cmc_added = False
-    for uav_id, plot_data in cmc_plot_points.items():
-        fips = plot_data.get('fips', [])
-        fops = plot_data.get('fops', [])
+    fip_cmc_label_added = False
+    fop_cmc_label_added = False
+
+    # The data structure from cmc_planner is now: {uav_id: [list of point dictionaries]}
+    # We iterate through each UAV's list of points.
+    for uav_id, points_list in cmc_plot_points.items():
         
-        if fips:
-            fips_np = np.array(fips)
-            #  FIP_cmc
-            ax.plot(fips_np[:, 0], fips_np[:, 1], '^', color='darkblue', markersize=12, fillstyle='none',  
-                    markeredgewidth=2, label='CMC FIP' if not fip_cmc_added else "", zorder=6)
-            fip_cmc_added = True
+        # Now, we iterate through each specific GN's FIP/FOP pair for this UAV.
+        for point_info in points_list:
+            # Extract the gn_index and coordinates from the dictionary
+            gn_idx = point_info['gn_index']
+            fip = point_info['fip']
+            fop = point_info['fop']
             
-        if fops:
-            fops_np = np.array(fops)
-            # FOP_cmc
-            ax.plot(fops_np[:, 0], fops_np[:, 1], 's', color='darkorange', markersize=10, fillstyle='none',  
-                    markeredgewidth=2, label='CMC FOP' if not fop_cmc_added else "", zorder=6)
-            fop_cmc_added = True
+            # --- Plot the FIP (triangle) and its text label ---
+            ax.plot(fip[0], fip[1], 
+                    marker='^',                 # Use triangle marker
+                    color='darkblue',           # Set color
+                    markersize=12,              # Set marker size
+                    fillstyle='none',           # Make it hollow
+                    markeredgewidth=2,          # Set border width
+                    label='CMC FIP' if not fip_cmc_label_added else "", # Add label only once
+                    linestyle='None',           # Do not connect the points with a line
+                    zorder=6)                   # Ensure it's drawn on top
+            
+            # Add the text label (gn_index) next to the FIP marker
+            ax.text(fip[0] + 20, fip[1] + 20,   # Position with a small offset
+                    str(gn_idx),                # The text to display
+                    color='darkblue',           # Match the marker color
+                    fontsize=10, 
+                    fontweight='bold', 
+                    ha='left',                  # Horizontal alignment
+                    va='bottom')                # Vertical alignment
+            
+            # Set the flag to True after the first FIP is plotted
+            fip_cmc_label_added = True
+
+            # --- Plot the FOP (square) and its text label ---
+            ax.plot(fop[0], fop[1], 
+                    marker='s',                 # Use square marker
+                    color='darkorange',         # Set color
+                    markersize=10,              # Set marker size
+                    fillstyle='none',           # Make it hollow
+                    markeredgewidth=2,          # Set border width
+                    label='CMC FOP' if not fop_cmc_label_added else "", # Add label only once
+                    linestyle='None',           # Do not connect the points with a line
+                    zorder=6)                   # Ensure it's drawn on top
+
+            # Add the text label (gn_index) next to the FOP marker
+            ax.text(fop[0] + 20, fop[1] + 20,   # Position with a small offset
+                    str(gn_idx),                # The text to display
+                    color='darkorange',         # Match the marker color
+                    fontsize=10, 
+                    fontweight='bold', 
+                    ha='left', 
+                    va='bottom')
+            
+            # Set the flag to True after the first FOP is plotted
+            fop_cmc_label_added = True
     
     handles, labels = ax.get_legend_handles_labels()
     by_label = dict(zip(labels, handles))

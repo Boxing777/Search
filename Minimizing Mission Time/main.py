@@ -345,13 +345,13 @@ def run_single_simulation(run_prefix: str, output_dir: str):
             print(f"--- {uav_id} Results ---")
             print(f"  V-Shaped Mission Time: {uav_mission_times.get(uav_id, 0):.2f}s | Path Length: {v_shaped_path_lengths.get(uav_id, 0):.2f}m")
             print(f"  Convex Mission Time:   {convex_mission_times.get(uav_id, 0):.2f}s | Path Length: {convex_path_lengths.get(uav_id, 0):.2f}m")
-            print(f"  BOB Mission Time:      {bob_mission_times.get(uav_id, 0):.2f}s | Path Length: {bob_path_lengths.get(uav_id, 0):.2f}m")
             print(f"  CMC Mission Time:      {cmc_mission_times.get(uav_id, 0):.2f}s | Path Length: {convex_path_lengths.get(uav_id, 0):.2f}m")
+            print(f"  BOB Mission Time:      {bob_mission_times.get(uav_id, 0):.2f}s | Path Length: {bob_path_lengths.get(uav_id, 0):.2f}m")
     
     print(f"\nSystem Mission Completion Time (MCT) for V-Shaped: {system_mct_v_shaped:.2f}s")
     print(f"System Mission Completion Time (MCT) for Convex:   {system_mct_convex:.2f}s")
-    print(f"System Mission Completion Time (MCT) for BOB:   {system_mct_bob:.2f}s")
     print(f"System Mission Completion Time (MCT) for CMC:      {system_mct_cmc:.2f}s")
+    print(f"System Mission Completion Time (MCT) for BOB:   {system_mct_bob:.2f}s")
     print(f"Total script execution time: {total_execution_time:.2f}s")
     
     print("\n[Step 5/5] Visualizing final combined trajectories...")

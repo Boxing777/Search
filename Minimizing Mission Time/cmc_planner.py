@@ -120,14 +120,14 @@ class CMCPlanner:
 
     def estimate_mission_time(self, ordered_gn_indices: List[int], required_data_per_gn: float) -> Dict:
         """
-        Estimates the mission time for a given sequence using the CMC method.
-        This version robustly handles all intersection cases.
+        Estimates mission time using the CMC method with strict sequential constraints.
+        This version correctly handles segments that are fully inside a communication circle.
         """
-        # --- This part is unchanged ---
+        # --- Step 1 remains unchanged ---
         if not ordered_gn_indices:
             return {"total_time": 0.0, "flight_time": 0.0, "hover_time": 0.0, "path_length": 0.0, "plot_points": {}}
 
-        print("\n--- Estimating Mission Time with CMC (Convex-Maximal-Collection) Method ---")
+        print("\n--- Estimating Mission Time with Sequential CMC Method ---")
 
         convex_result = self.convex_planner.plan_shortest_path_for_sequence(ordered_gn_indices)
         if not convex_result["path"].any():
@@ -137,127 +137,160 @@ class CMCPlanner:
         shortest_path_length = convex_result["length"]
         total_flight_time = shortest_path_length / self.uav_speed
 
-        total_hover_time = 0.0
         gns_coords = self.convex_planner.all_gns
         comm_radius = self.convex_planner.comm_radius
 
-        all_fips_cmc = []
-        all_fops_cmc = []
+        # --- Step 2: Generate Event List (Revised Logic) ---
+        events = []
+        current_path_dist = 0
+        for i in range(len(shortest_path) - 1):
+            p1, p2 = shortest_path[i], shortest_path[i+1]
+            segment_len = np.linalg.norm(p2 - p1)
+            if segment_len < 1e-9: continue
 
-        for gn_index in ordered_gn_indices:
-            gn_coord = gns_coords[gn_index]
-            
-            # --- START OF REVISED LOGIC ---
-
-            collection_segments = [] # Segments of the path that are inside the circle
-            
-            for i in range(len(shortest_path) - 1):
-                p1, p2 = shortest_path[i], shortest_path[i+1]
+            for gn_index in ordered_gn_indices:
+                gn_coord = gns_coords[gn_index]
+                
                 p1_inside = np.linalg.norm(p1 - gn_coord) <= comm_radius
                 p2_inside = np.linalg.norm(p2 - gn_coord) <= comm_radius
                 
                 intersections = self._get_line_circle_intersections(p1, p2, gn_coord, comm_radius)
 
+                # --- START OF FINAL CORRECTION ---
                 if p1_inside and p2_inside:
-                    # Case 1: The entire segment is inside the circle
-                    collection_segments.append((p1, p2))
+                    # Case 1: Entire segment is inside.
+                    events.append({'progress': current_path_dist, 'point': p1, 'type': 'START_INTERNAL', 'gn_index': gn_index})
+                    events.append({'progress': current_path_dist + segment_len, 'point': p2, 'type': 'END_INTERNAL', 'gn_index': gn_index})
+                
                 elif p1_inside and not p2_inside:
-                    # Case 2: Path is exiting the circle. The segment is from p1 to the intersection.
+                    # Case 2: Exiting. Find the single intersection.
                     if intersections:
-                        collection_segments.append((p1, intersections[0]))
+                        # Should be only one intersection, but find the one closest to p1 just in case
+                        point = min(intersections, key=lambda p: np.linalg.norm(p - p1))
+                        progress = current_path_dist + np.linalg.norm(point - p1)
+                        events.append({'progress': progress, 'point': point, 'type': 'EXIT', 'gn_index': gn_index})
+
                 elif not p1_inside and p2_inside:
-                    # Case 3: Path is entering the circle. The segment is from the intersection to p2.
+                    # Case 3: Entering. Find the single intersection.
                     if intersections:
-                        collection_segments.append((intersections[0], p2))
-                elif intersections:
-                    # Case 4: Path crosses the circle. The segment is between the two intersections.
-                    if len(intersections) == 2:
-                        # Sort intersections to ensure correct order
-                        dist1 = np.linalg.norm(intersections[0] - p1)
-                        dist2 = np.linalg.norm(intersections[1] - p1)
-                        if dist1 < dist2:
-                            collection_segments.append((intersections[0], intersections[1]))
-                        else:
-                            collection_segments.append((intersections[1], intersections[0]))
-            
-            fip_cmc, fop_cmc = None, None
+                        point = min(intersections, key=lambda p: np.linalg.norm(p - p1))
+                        progress = current_path_dist + np.linalg.norm(point - p1)
+                        events.append({'progress': progress, 'point': point, 'type': 'ENTER', 'gn_index': gn_index})
+
+                elif not p1_inside and not p2_inside and len(intersections) == 2:
+                    # Case 4: Crossing from outside to outside.
+                    p_a, p_b = intersections
+                    prog_a = current_path_dist + np.linalg.norm(p_a - p1)
+                    prog_b = current_path_dist + np.linalg.norm(p_b - p1)
+                    
+                    if prog_a > prog_b:
+                        prog_a, prog_b = prog_b, prog_a
+                        p_a, p_b = p_b, p_a
+                    
+                    events.append({'progress': prog_a, 'point': p_a, 'type': 'ENTER', 'gn_index': gn_index})
+                    events.append({'progress': prog_b, 'point': p_b, 'type': 'EXIT', 'gn_index': gn_index})
+                # --- END OF MODIFICATION ---
+
+            current_path_dist += segment_len
+        
+        events.sort(key=lambda x: x['progress'])
+
+        # Step 3: Scan the event list to determine sequential service segments
+        collection_periods = {gn_index: [] for gn_index in ordered_gn_indices}
+        gn_map = {gn_index: i for i, gn_index in enumerate(ordered_gn_indices)}
+        
+        currently_serving_gn = None
+        current_fip = None
+        
+        for event in events:
+            event_gn_idx = event['gn_index']
+            event_type = event['type']
+            event_point = event['point']
+
+            if currently_serving_gn is None:
+                # Can start serving if we enter a new zone
+                if event_type in ['ENTER', 'START_INTERNAL']:
+                    currently_serving_gn = event_gn_idx
+                    current_fip = event_point
+            else: # Currently serving a GN
+                if event_gn_idx == currently_serving_gn:
+                    # Event belongs to the GN we are currently serving
+                    if event_type in ['EXIT', 'END_INTERNAL']:
+                        collection_periods[currently_serving_gn].append((current_fip, event_point))
+                        currently_serving_gn = None
+                        current_fip = None
+                else: # Event belongs to a different GN
+                    # Check if the new GN is next in the service order
+                    if gn_map.get(event_gn_idx, -1) > gn_map.get(currently_serving_gn, -1):
+                        if event_type in ['ENTER', 'START_INTERNAL']:
+                            # Overlapping case: handover service
+                            collection_periods[currently_serving_gn].append((current_fip, event_point))
+                            currently_serving_gn = event_gn_idx
+                            current_fip = event_point
+
+        if currently_serving_gn is not None:
+             collection_periods[currently_serving_gn].append((current_fip, shortest_path[-1]))
+
+        # Step 4 & 5 remain unchanged as they correctly iterate over the generated segments.
+        # ... (The rest of the function is identical to your last correct version) ...
+        total_hover_time = 0.0
+        cmc_points_for_plot = []
+
+        for gn_index in ordered_gn_indices:
+            gn_coord = gns_coords[gn_index]
             data_collected_on_segment = 0
             
-            if collection_segments:
-                # Find the true FIP and FOP from all collected segments
+            segments_for_gn = collection_periods[gn_index]
+            
+            if segments_for_gn:
+                final_fip = segments_for_gn[0][0]
+                final_fop = segments_for_gn[-1][1]
                 
-                # To find the first point (FIP), find the segment start point that appears earliest on the path
-                path_progress = []
-                current_path_dist = 0
-                all_collection_points = [p for seg in collection_segments for p in seg]
+                cmc_points_for_plot.append({
+                    "gn_index": gn_index,
+                    "fip": final_fip,
+                    "fop": final_fop
+                })
 
-                for i in range(len(shortest_path) - 1):
-                    p_start, p_end = shortest_path[i], shortest_path[i+1]
-                    for point in all_collection_points:
-                        proj_point = self._get_closest_point_on_segment(p_start, p_end, point)
-                        if np.linalg.norm(proj_point - point) < 1e-6:
-                             progress = current_path_dist + np.linalg.norm(proj_point - p_start)
-                             if not any(np.isclose(progress, p[0]) for p in path_progress):
-                                path_progress.append((progress, point))
-                    current_path_dist += np.linalg.norm(p_end - p_start)
-                
-                if path_progress:
-                    path_progress.sort(key=lambda x: x[0])
-                    fip_cmc = path_progress[0][1]
-                    fop_cmc = path_progress[-1][1]
-                    all_fips_cmc.append(fip_cmc)
-                    all_fops_cmc.append(fop_cmc)
-                
-                # Calculate total data by summing up collection over all segments inside
-                for seg_start, seg_end in collection_segments:
-                    data_collected_on_segment += self.traj_optimizer._calculate_collected_data(
+                for seg_start, seg_end in segments_for_gn:
+                     # This logic correctly handles multiple segments
+                     data_collected_on_segment += self.traj_optimizer._calculate_collected_data(
                         seg_start, seg_end, gn_coord
                     )
             
-            # --- END OF REVISED LOGIC ---
-
             hover_time_for_gn = 0
             data_shortfall = required_data_per_gn - data_collected_on_segment
-            
             if data_shortfall > 0:
-                hover_point = None
-                min_dist_sq = float('inf')
-                
-                # Find the best hover point across all collection segments
-                if collection_segments:
-                    for seg_start, seg_end in collection_segments:
-                        closest_p_on_segment = self._get_closest_point_on_segment(seg_start, seg_end, gn_coord)
-                        dist_sq = np.sum((closest_p_on_segment - gn_coord)**2)
-                        if dist_sq < min_dist_sq:
-                            min_dist_sq = dist_sq
-                            hover_point = closest_p_on_segment
-                else:
-                    # If there are no collection segments, find the closest point on the entire path
-                    for i in range(len(shortest_path) - 1):
-                        p1, p2 = shortest_path[i], shortest_path[i+1]
-                        closest_p = self._get_closest_point_on_segment(p1, p2, gn_coord)
+                hover_point, min_dist_sq = None, float('inf')
+                if segments_for_gn:
+                    for seg_start, seg_end in segments_for_gn:
+                        closest_p = self._get_closest_point_on_segment(seg_start, seg_end, gn_coord)
                         dist_sq = np.sum((closest_p - gn_coord)**2)
                         if dist_sq < min_dist_sq:
-                            min_dist_sq = dist_sq
-                            hover_point = closest_p
-
+                            min_dist_sq, hover_point = dist_sq, closest_p
+                else:
+                    for i in range(len(shortest_path) - 1):
+                        closest_p = self._get_closest_point_on_segment(shortest_path[i], shortest_path[i+1], gn_coord)
+                        dist_sq = np.sum((closest_p - gn_coord)**2)
+                        if dist_sq < min_dist_sq:
+                           min_dist_sq, hover_point = dist_sq, closest_p
+                
                 if hover_point is not None:
-                    rate_at_hover_point = self.traj_optimizer.calculate_hover_rate_at_point(hover_point, gn_coord)
-                    hover_time_for_gn = data_shortfall / rate_at_hover_point if rate_at_hover_point > 1e-6 else float('inf')
+                    rate = self.traj_optimizer.calculate_hover_rate_at_point(hover_point, gn_coord)
+                    hover_time_for_gn = data_shortfall / rate if rate > 1e-6 else float('inf')
                 else:
                     hover_time_for_gn = float('inf')
-                
+            
             total_hover_time += hover_time_for_gn
-            print(f"    -> CMC for GN {gn_index}: Flight Collection Data: {data_collected_on_segment/1e6:.2f} Mbits, Required Hover Time: {hover_time_for_gn:.2f}s")
-
-        # --- This part is unchanged ---
+            print(f"    -> SeqCMC for GN {gn_index}: Flight Collection: {data_collected_on_segment/1e6:.2f} Mbits, Hover: {hover_time_for_gn:.2f}s")
+        
         total_mission_time = total_flight_time + total_hover_time
-        print("  - CMC time estimation complete.")
+        print("  - Sequential CMC time estimation complete.")
         
         return {
             "total_time": total_mission_time,
             "flight_time": total_flight_time,
             "hover_time": total_hover_time,
             "path_length": shortest_path_length,
-            "plot_points": {"fips": all_fips_cmc, "fops": all_fops_cmc}
+            "plot_points": cmc_points_for_plot
         }
