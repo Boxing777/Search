@@ -370,7 +370,7 @@ def run_single_simulation(run_prefix: str, output_dir: str):
 if __name__ == "__main__":
     NUMBER_OF_RUNS = 200 # Set to 1 for testing the fix
     BASE_RESULTS_DIR = "simulation_results"
-    BATCH_SEED = 66 # You can choose any integer you like.
+    BATCH_SEED = 777 # You can choose any integer you like.
     
     if not os.path.exists(BASE_RESULTS_DIR):
         os.makedirs(BASE_RESULTS_DIR)
