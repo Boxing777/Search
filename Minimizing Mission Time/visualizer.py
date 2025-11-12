@@ -320,3 +320,4 @@ def plot_performance_curve(x_data: Dict[str, List], y_data: Dict[str, List],
     ax.legend()
     plt.tight_layout()
     plt.show()
+    
