@@ -140,4 +140,3 @@ def generate_flight_log_report(
     report_path = os.path.join(output_dir, f'{run_prefix}_{uav_id}_flight_log_report.csv')
     df_final.to_csv(report_path, index=False, float_format='%.2f')
     print(f"\nDetailed flight log report saved to: {os.path.basename(report_path)}")
-    

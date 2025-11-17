@@ -294,4 +294,3 @@ class CMCPlanner:
             "path_length": shortest_path_length,
             "plot_points": cmc_points_for_plot
         }
-        

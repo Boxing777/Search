@@ -113,5 +113,4 @@ class ConvexTrajectoryPlanner:
             "path": final_path,
             "length": final_length,
             "collection_segments": collection_segments
-        }
-        
+        }     
