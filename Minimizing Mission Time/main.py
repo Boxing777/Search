@@ -100,7 +100,7 @@ def run_single_simulation(run_prefix: str, output_dir: str):
     
     print(f"Environment created: {params.AREA_WIDTH}x{params.AREA_HEIGHT}m area with {params.NUM_GNS} GNs.")
 
-    required_data_per_gn = 24 * 1e6 # Set to a high value to see V-shapes data size
+    required_data_per_gn = 16 * 1e6 # Set to a high value to see V-shapes data size
     print(f"Data requirement per GN set to {required_data_per_gn / 1e6:.0f} Mbits.")
     
     print("\n[Step 2/5] Running Mission Allocation (Genetic Algorithm)...")
