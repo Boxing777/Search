@@ -1,0 +1,115 @@
+
+--- Starting RUN_9 ---
+======================================================
+      UAV Trajectory Opt. - RUN_9
+======================================================
+
+[Step 1/5] Initializing simulation environment...
+
+--- Key Performance Indicators ---
+Communication Radius (D): 200.47 meters.
+Data Rate at GN Center (max): 13.51 Mbps.
+Data Rate at GN Edge (min):   2.99 Mbps.
+Max Data in FM Mode (C_f_max): 140.17 Mbits.
+---------------------------------
+Generating GNs in pairs with safety margin D=200.47m.
+Generated pair 1/4. Distance: 198.44m
+Generated pair 2/4. Distance: 205.91m
+Generated pair 3/4. Distance: 193.78m
+Generated pair 4/4. Distance: 124.95m
+Successfully generated 8 GNs in 4 overlapping pairs.
+Environment created: 2000.0x2000.0m area with 8 GNs.
+Data requirement per GN set to 24 Mbits.
+
+[Step 2/5] Running Mission Allocation (Genetic Algorithm)...
+Starting Genetic Algorithm for mission allocation and routing...
+Generation 10/100, Best Fitness: 2134.04
+Generation 20/100, Best Fitness: 2134.04
+Generation 30/100, Best Fitness: 2134.04
+Generation 40/100, Best Fitness: 2134.04
+Generation 50/100, Best Fitness: 2134.04
+Generation 60/100, Best Fitness: 2134.04
+Generation 70/100, Best Fitness: 2134.04
+Generation 80/100, Best Fitness: 2134.04
+Generation 90/100, Best Fitness: 2134.04
+Generation 100/100, Best Fitness: 2134.04
+Genetic Algorithm finished.
+Final Min-Max Mission Cost: 2134.04
+  UAV_0: Route [0, 1, 7, 6, 2, 5, 4, 3]
+
+[Step 3/5] Running Trajectory Optimizations for each UAV...
+
+--- Optimizing for UAV_0 with sequence: [0, 1, 7, 6, 2, 5, 4, 3] ---
+    -> Optimized for GN 0. Leg Time (t_in+t_collect): 27.34s. New FOP: [1477.7  737. ]
+    -> Optimized for GN 1. Leg Time (t_in+t_collect): 8.72s. New FOP: [1310.4  701.2]
+    -> Optimized for GN 7. Leg Time (t_in+t_collect): 37.87s. New FOP: [726.1 280.7]
+    -> Optimized for GN 6. Leg Time (t_in+t_collect): 9.82s. New FOP: [643.1 445. ]
+    -> Optimized for GN 2. Leg Time (t_in+t_collect): 43.15s. New FOP: [ 535.  1301.1]
+    -> Optimized for GN 5. Leg Time (t_in+t_collect): 20.08s. New FOP: [ 672.8 1668.5]
+    -> Optimized for GN 4. Leg Time (t_in+t_collect): 10.81s. New FOP: [ 736.4 1492.4]
+    -> Optimized for GN 3. Leg Time (t_in+t_collect): 23.39s. New FOP: [ 958.8 1081.5]
+  - Optimization complete for UAV_0. Total mission time: 185.75s
+  -> Running Convex Planner for the same sequence...
+  - Planning shortest path for fixed order: [0, 1, 7, 6, 2, 5, 4, 3]
+  - Solving the convex optimization problem...
+  - Convex optimization successful.
+     Convex Path Length: 2910.40m
+  -> Calculating actual mission time for Convex Path...
+     Convex Path -> Flight Time: 145.52s, Required Hover Time: 47.14s, TOTAL FAIR TIME: 192.66s
+
+  -> Running BOB Planner for the same sequence...
+
+--- Planning with BOB (Balanced Optimization Benchmark) Method ---
+  - Step 1: Calculating geometric skeleton using Convex Planner...
+  - Planning shortest path for fixed order: [0, 1, 7, 6, 2, 5, 4, 3]
+  - Solving the convex optimization problem...
+  - Convex optimization successful.
+  - Step 2: Performing segment-wise local optimization...
+    -> Optimized for GN 0. Local Leg Time: 22.92s
+    -> Optimized for GN 1. Local Leg Time: 6.95s
+    -> Optimized for GN 7. Local Leg Time: 41.55s
+    -> Optimized for GN 6. Local Leg Time: 8.31s
+    -> Optimized for GN 2. Local Leg Time: 38.51s
+    -> Optimized for GN 5. Local Leg Time: 19.54s
+    -> Optimized for GN 4. Local Leg Time: 7.55s
+    -> Optimized for GN 3. Local Leg Time: 23.44s
+  - BOB planning complete.
+     BOB Mission Time: 179.87s | Path Length: 3597.43m
+
+  -> Running CMC Planner for the same sequence...
+
+--- Estimating Mission Time with CMC (Convex-Maximal-Collection) Method ---
+  - Planning shortest path for fixed order: [0, 1, 7, 6, 2, 5, 4, 3]
+  - Solving the convex optimization problem...
+  - Convex optimization successful.
+    -> CMC for GN 0: Flight Collection Data: 0.00 Mbits, Required Hover Time: 8.02s
+    -> CMC for GN 1: Flight Collection Data: 0.00 Mbits, Required Hover Time: 8.02s
+    -> CMC for GN 7: Flight Collection Data: 56.80 Mbits, Required Hover Time: 0.00s
+    -> CMC for GN 6: Flight Collection Data: 0.00 Mbits, Required Hover Time: 8.02s
+    -> CMC for GN 2: Flight Collection Data: 148.15 Mbits, Required Hover Time: 0.00s
+    -> CMC for GN 5: Flight Collection Data: 0.00 Mbits, Required Hover Time: 8.02s
+    -> CMC for GN 4: Flight Collection Data: 0.00 Mbits, Required Hover Time: 8.02s
+    -> CMC for GN 3: Flight Collection Data: 60.22 Mbits, Required Hover Time: 0.00s
+  - CMC time estimation complete.
+     CMC Path    -> Flight Time: 145.52s, Required Hover Time: 40.12s, TOTAL FAIR TIME: 185.64s
+
+Detailed flight log report saved to: run_9_UAV_0_flight_log_report.csv
+
+[Step 4/5] Analyzing final results...
+
+--- Simulation Summary ---
+--- UAV_0 Results ---
+  V-Shaped Mission Time: 185.75s | Path Length: 3714.94m
+  Convex Mission Time:   192.66s | Path Length: 2910.40m
+  BOB Mission Time:      179.87s | Path Length: 3597.43m
+  CMC Mission Time:      185.64s | Path Length: 2910.40m
+
+System Mission Completion Time (MCT) for V-Shaped: 185.75s
+System Mission Completion Time (MCT) for Convex:   192.66s
+System Mission Completion Time (MCT) for CMC:      185.64s
+Total script execution time: 377.63s
+
+[Step 5/5] Visualizing final combined trajectories...
+
+Simulation finished successfully.
+======================================================

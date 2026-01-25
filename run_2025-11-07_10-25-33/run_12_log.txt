@@ -1,0 +1,42 @@
+
+--- Starting RUN_12 ---
+======================================================
+      UAV Trajectory Opt. - RUN_12
+======================================================
+
+[Step 1/5] Initializing simulation environment...
+
+--- Key Performance Indicators ---
+Communication Radius (D): 200.47 meters.
+Data Rate at GN Center (max): 13.51 Mbps.
+Data Rate at GN Edge (min):   2.99 Mbps.
+Max Data in FM Mode (C_f_max): 140.17 Mbits.
+---------------------------------
+Generating GNs in pairs with safety margin D=200.47m.
+Generated pair 1/4. Distance: 331.78m
+Generated pair 2/4. Distance: 52.86m
+Generated pair 3/4. Distance: 210.59m
+Generated pair 4/4. Distance: 330.81m
+Successfully generated 8 GNs in 4 overlapping pairs.
+Environment created: 2000.0x2000.0m area with 8 GNs.
+Data requirement per GN set to 24 Mbits.
+
+[Step 2/5] Running Mission Allocation (Genetic Algorithm)...
+Starting Genetic Algorithm for mission allocation and routing...
+Generation 10/100, Best Fitness: 2398.34
+Generation 20/100, Best Fitness: 2398.34
+Generation 30/100, Best Fitness: 2398.34
+Generation 40/100, Best Fitness: 2398.34
+Generation 50/100, Best Fitness: 2396.07
+Generation 60/100, Best Fitness: 2396.07
+Generation 70/100, Best Fitness: 2396.07
+Generation 80/100, Best Fitness: 2396.07
+Generation 90/100, Best Fitness: 2396.07
+Generation 100/100, Best Fitness: 2396.07
+Genetic Algorithm finished.
+Final Min-Max Mission Cost: 2396.07
+  UAV_0: Route [4, 5, 6, 7, 0, 1, 3, 2]
+
+[Step 3/5] Running Trajectory Optimizations for each UAV...
+
+--- Optimizing for UAV_0 with sequence: [4, 5, 6, 7, 0, 1, 3, 2] ---

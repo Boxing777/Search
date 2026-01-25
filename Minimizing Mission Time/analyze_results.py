@@ -134,6 +134,64 @@ def analyze_batch_results(batch_dir):
     for p in barplot.patches: barplot.annotate(f"{p.get_height():.2f}%", (p.get_x() + p.get_width() / 2., p.get_height()), ha='center', va='center', xytext=(0, 9), textcoords='offset points')
     save_path_imp = os.path.join(batch_dir, 'summary_improvement_barplot.png'); plt.savefig(save_path_imp)
     print(f"Saved Improvement bar plot to: '{save_path_imp}'")
+    
+    print("\n" + "="*20 + " HEAD-TO-HEAD ANALYSIS: BOB vs V-Shaped " + "="*20)
+    
+    # 1. Calculate differences for each run
+    # Positive diff means V-Shaped took longer (BOB won)
+    # Negative diff means BOB took longer (BOB lost)
+    diffs = df['V_Shaped_Time'] - df['BOB_Time']
+    
+    bob_wins = diffs[diffs > 0]
+    bob_losses = diffs[diffs < 0]
+    draws = diffs[diffs == 0]
+    
+    num_wins = len(bob_wins)
+    num_losses = len(bob_losses)
+    num_draws = len(draws)
+    total_runs = len(df)
+    
+    win_rate = (num_wins / total_runs) * 100
+    loss_rate = (num_losses / total_runs) * 100
+    
+    # 2. Calculate average margins
+    avg_win_margin = bob_wins.mean() if num_wins > 0 else 0.0
+    avg_loss_margin = (-bob_losses).mean() if num_losses > 0 else 0.0 # Convert to positive for magnitude
+    
+    # 3. Print detailed stats to log
+    print(f"Total Runs: {total_runs}")
+    print(f"BOB Wins:   {num_wins} ({win_rate:.1f}%)")
+    print(f"BOB Losses: {num_losses} ({loss_rate:.1f}%)")
+    print(f"Draws:      {num_draws}")
+    print("-" * 40)
+    print(f"When BOB wins, it saves an average of: {avg_win_margin:.2f} seconds")
+    print(f"When BOB loses, it lags by an average of:  {avg_loss_margin:.2f} seconds")
+    print("="*76 + "\n")
+
+    # 4. Generate a Win/Loss Pie Chart
+    plt.figure(figsize=(8, 8))
+    labels = [f'BOB Wins\n({num_wins})', f'V-Shaped Wins\n({num_losses})']
+    sizes = [num_wins, num_losses]
+    colors = ['#66b3ff', '#ff9999'] # Blue for BOB win, Red for V-Shaped win
+    
+    if num_draws > 0:
+        labels.append(f'Draws\n({num_draws})')
+        sizes.append(num_draws)
+        colors.append('#99ff99')
+
+    plt.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', startangle=90, pctdistance=0.85)
+    
+    # Draw a circle at the center to make it a donut chart (optional, looks nice)
+    centre_circle = plt.Circle((0,0),0.70,fc='white')
+    fig = plt.gcf()
+    fig.gca().add_artist(centre_circle)
+    
+    plt.title(f'Head-to-Head Win Rate: BOB vs V-Shaped\n(Total {total_runs} Runs)', fontsize=16)
+    plt.tight_layout()
+    
+    save_path_pie = os.path.join(batch_dir, 'summary_bob_vs_vshaped_pie.png')
+    plt.savefig(save_path_pie)
+    print(f"Saved Head-to-Head pie chart to: '{save_path_pie}'")
 
     plt.show()
 

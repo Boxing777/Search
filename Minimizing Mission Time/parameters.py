@@ -23,10 +23,10 @@ from typing import Tuple, Dict
 
 # The width of the square simulation area. The simulation space is a 2D plane
 # from (0, 0) to (AREA_WIDTH, AREA_HEIGHT).
-AREA_WIDTH = 2000.0  # meters 2000
+AREA_WIDTH = 3000.0  # meters 2000
 
 # The height of the square simulation area. Typically same as AREA_WIDTH.
-AREA_HEIGHT = 2000.0 # meters
+AREA_HEIGHT = 3000.0 # meters
 
 
 
