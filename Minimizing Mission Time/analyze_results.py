@@ -158,7 +158,7 @@ def analyze_batch_results(batch_dir):
     
     plt.figure(figsize=(10, 6))
     # Use a different color palette ('viridis') to distinguish from the per-run plot
-    barplot_global = sns.barplot(x='Method', y='Improvement of Averages (%)', data=df_global_imp, palette='viridis')
+    barplot_global = sns.barplot(x='Method', y='Improvement of Averages (%)', data=df_global_imp)
     plt.axhline(0, color='black', linewidth=0.8)
     
     # Dynamic title based on baseline_method variable
