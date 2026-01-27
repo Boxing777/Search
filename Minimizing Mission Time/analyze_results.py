@@ -94,9 +94,7 @@ def analyze_batch_results(batch_dir):
     ax_time.legend(handles=legend_elements_time)
     save_path_mct = os.path.join(batch_dir, 'summary_mct_boxplot.png'); plt.savefig(save_path_mct)
     print(f"Saved enhanced MCT boxplot to: '{save_path_mct}'")
-    # <<< MODIFICATION END >>>
-
-    # <<< MODIFICATION START: Enhanced Path Length Box Plot >>>
+    
     length_df = df[[f'{m}_Length' for m in methods]]; length_df.columns = [m.replace('_', '-') for m in methods]
     plt.figure(figsize=(12, 8))
     ax_len = sns.boxplot(data=length_df, showmeans=True, meanline=True, meanprops={'color': 'cyan', 'linestyle': '--', 'linewidth': 2})
@@ -134,6 +132,52 @@ def analyze_batch_results(batch_dir):
     for p in barplot.patches: barplot.annotate(f"{p.get_height():.2f}%", (p.get_x() + p.get_width() / 2., p.get_height()), ha='center', va='center', xytext=(0, 9), textcoords='offset points')
     save_path_imp = os.path.join(batch_dir, 'summary_improvement_barplot.png'); plt.savefig(save_path_imp)
     print(f"Saved Improvement bar plot to: '{save_path_imp}'")
+    
+    # <<< NEW: Method 2: Percentage Improvement of Averages (Global Basis) >>>
+    print("\n" + "="*20 + " GLOBAL AVERAGE COMPARISON " + "="*20)
+    
+    # Calculate the global mean for the baseline method
+    baseline_mean_time = df[f'{baseline_method}_Time'].mean()
+    print(f"Global Average Time for {baseline_method}: {baseline_mean_time:.2f}s")
+    
+    global_improvement_data = []
+    for method in comparison_methods:
+        # Calculate the global mean for the comparison method
+        method_mean_time = df[f'{method}_Time'].mean()
+        
+        # Formula: (Avg_Baseline - Avg_Method) / Avg_Baseline * 100
+        imp_percent = (baseline_mean_time - method_mean_time) / baseline_mean_time * 100
+        
+        global_improvement_data.append({
+            'Method': method.replace('_', '-'), 
+            'Improvement of Averages (%)': imp_percent
+        })
+        print(f"{method.replace('_', '-')} Average: {method_mean_time:.2f}s -> Improvement: {imp_percent:.2f}%")
+        
+    df_global_imp = pd.DataFrame(global_improvement_data)
+    
+    plt.figure(figsize=(10, 6))
+    # Use a different color palette ('viridis') to distinguish from the per-run plot
+    barplot_global = sns.barplot(x='Method', y='Improvement of Averages (%)', data=df_global_imp, palette='viridis')
+    plt.axhline(0, color='black', linewidth=0.8)
+    
+    # Dynamic title based on baseline_method variable
+    plt.title(f'Improvement of Global Average Time vs. {baseline_method.replace("_","-")}', fontsize=16)
+    plt.ylabel(f'Time Saved (Global Avg) (%)', fontsize=12)
+    
+    # Add value labels on top of bars
+    for p in barplot_global.patches:
+        barplot_global.annotate(f"{p.get_height():.2f}%", 
+                                (p.get_x() + p.get_width() / 2., p.get_height()), 
+                                ha='center', va='center', 
+                                xytext=(0, 9), 
+                                textcoords='offset points')
+        
+    save_path_global_imp = os.path.join(batch_dir, 'summary_improvement_of_averages_barplot.png')
+    plt.savefig(save_path_global_imp)
+    print(f"Saved Improvement (Global Averages) bar plot to: '{save_path_global_imp}'")
+    print("="*67 + "\n")
+    # <<< END NEW >>>
     
     print("\n" + "="*20 + " HEAD-TO-HEAD ANALYSIS: BOB vs V-Shaped " + "="*20)
     
