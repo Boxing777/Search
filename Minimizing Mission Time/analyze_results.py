@@ -170,6 +170,7 @@ def analyze_batch_results(batch_dir):
         barplot_global.annotate(f"{p.get_height():.2f}%", 
                                 (p.get_x() + p.get_width() / 2., p.get_height()), 
                                 ha='center', va='center', 
+                                
                                 xytext=(0, 9), 
                                 textcoords='offset points')
         
