@@ -93,7 +93,7 @@ def run_single_simulation(run_prefix: str, output_dir: str):
     print(f"Data Rate at GN Center (max): {traj_optimizer.hover_datarate / 1e6:.2f} Mbps.")
     print(f"Data Rate at GN Edge (min):   {rate_at_edge / 1e6:.2f} Mbps.")
     print(f"Max Data in FM Mode (C_f_max): {c_f_max / 1e6:.2f} Mbits.") 
-    print(f"---------------------------------")
+    print(f"---------------------------------") 
     
     comm_radius = traj_optimizer.comm_radius_d
     sim_env = SimulationEnvironment(params, comm_radius=comm_radius)
