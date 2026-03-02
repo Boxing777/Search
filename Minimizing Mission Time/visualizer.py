@@ -87,13 +87,15 @@ def plot_final_comparison_trajectories(gns: np.ndarray, data_center_pos: Tuple[f
                                        v_shaped_trajectories: Dict[str, List[Dict]],
                                        convex_trajectories: Dict[str, np.ndarray],
                                        bob_trajectories: Dict[str, List[Dict]],
+                                       bob_f_trajectories: Dict[str, List[Dict]], 
                                        cmc_plot_points: Dict[str, Dict],
                                        area_width: float, area_height: float, comm_radius: float,
                                        save_path: str = None, title: str = "Final Optimized Trajectories Comparison"):
     fig, ax = plt.subplots(figsize=(14, 14))
     plot_gn_environment(ax, gns, data_center_pos, area_width, area_height, comm_radius)
+    
     for i, (uav_id, segments) in enumerate(v_shaped_trajectories.items()):
-        color = UAV_COLORS[i % len(UAV_COLORS)]
+        color = UAV_COLORS[i % len(UAV_COLORS)] # Default to Red usually
         ax.plot([], [], color=color, linestyle='-', linewidth=2.0, label=f'{uav_id} V-Shaped (Time-Optimal)')
         sequence_counter = 1
         for segment in segments:
@@ -117,112 +119,85 @@ def plot_final_comparison_trajectories(gns: np.ndarray, data_center_pos: Tuple[f
     for i, (uav_id, path) in enumerate(convex_trajectories.items()):
         color = 'darkblue' if i==0 else 'darkgreen'
         if len(path) > 0:
-            # 1. Plot the full path line without markers, but add a label for the legend
             ax.plot(path[:, 0], path[:, 1], color=color, linestyle=':', linewidth=2.0, 
                     label=f'{uav_id} Convex (Shortest Path)')
 
-            # 2. Extract So and Eo points
-            # Path structure is [DC, So_0, Eo_0, So_1, Eo_1, ..., DC]
-            # So points are at indices 1, 3, 5, ...
             so_points = path[1:-1:2]
-            # Eo points are at indices 2, 4, 6, ...
             eo_points = path[2:-1:2]
 
-            # 3. Plot So points with 'x' markers
             if len(so_points) > 0:
                 ax.plot(so_points[:, 0], so_points[:, 1], 'x', color='green', markersize=8, 
                         markeredgewidth=2, label='Start of Collection (So)' if not so_label_added else "", 
                         zorder=5)
                 so_label_added = True
 
-            # 4. Plot Eo points with 'o' markers
             if len(eo_points) > 0:
                 ax.plot(eo_points[:, 0], eo_points[:, 1], 'o', color='purple', markersize=8,
                         fillstyle='none', markeredgewidth=2, label='End of Collection (Eo)' if not eo_label_added else "",
                         zorder=5)
                 eo_label_added = True
-###
-        
+
     for i, (uav_id, segments) in enumerate(bob_trajectories.items()):
         color = 'cyan' 
-        ax.plot([], [], color=color, linestyle='-.', linewidth=2.0, label=f'{uav_id} BOB')
+        ax.plot([], [], color=color, linestyle='-.', linewidth=2.0, label=f'{uav_id} BOB-V') # Label зям░ BOB-V
 
         if not segments: continue
-
         previous_pos = data_center_pos
-
         for segment in segments:
             fip, oh, fop = np.array(segment['fip']), np.array(segment['oh']), np.array(segment['fop'])
-            
             ax.plot([previous_pos[0], fip[0]], [previous_pos[1], fip[1]], color=color, linestyle='-.', linewidth=1.5, zorder=2)
-            
             v_path = np.array([fip, oh, fop])
             ax.plot(v_path[:, 0], v_path[:, 1], color=color, linestyle='-.', linewidth=1.5, marker='.', markersize=4, zorder=2)
-
             previous_pos = fop 
         
         ax.plot([previous_pos[0], data_center_pos[0]], [previous_pos[1], data_center_pos[1]], color=color, linestyle='-.', linewidth=1.5, zorder=2)
     
-###        
     
+    for i, (uav_id, segments) in enumerate(bob_f_trajectories.items()):
+        color = 'magenta' 
+        ax.plot([], [], color=color, linestyle='--', linewidth=2.0, label=f'{uav_id} BOB-F (Overlap)')
+
+        if not segments: continue
+        previous_pos = data_center_pos
+        for segment in segments:
+            fip, oh, fop = np.array(segment['fip']), np.array(segment['oh']), np.array(segment['fop'])
+            
+            if np.linalg.norm(fip - previous_pos) > 1e-6:
+                ax.plot([previous_pos[0], fip[0]], [previous_pos[1], fip[1]], color=color, linestyle='--', linewidth=1.5, zorder=2)
+            
+            v_path = np.array([fip, oh, fop])
+            ax.plot(v_path[:, 0], v_path[:, 1], color=color, linestyle='--', linewidth=1.5, marker='.', markersize=4, zorder=2)
+            previous_pos = fop 
+        
+        ax.plot([previous_pos[0], data_center_pos[0]], [previous_pos[1], data_center_pos[1]], color=color, linestyle='--', linewidth=1.5, zorder=2)
+
     fip_cmc_label_added = False
     fop_cmc_label_added = False
 
-    # The data structure from cmc_planner is now: {uav_id: [list of point dictionaries]}
-    # We iterate through each UAV's list of points.
     for uav_id, points_list in cmc_plot_points.items():
-        
-        # Now, we iterate through each specific GN's FIP/FOP pair for this UAV.
         for point_info in points_list:
-            # Extract the gn_index and coordinates from the dictionary
             gn_idx = point_info['gn_index']
             fip = point_info['fip']
             fop = point_info['fop']
             
-            # --- Plot the FIP (triangle) and its text label ---
-            ax.plot(fip[0], fip[1], 
-                    marker='^',                 # Use triangle marker
-                    color='darkblue',           # Set color
-                    markersize=12,              # Set marker size
-                    fillstyle='none',           # Make it hollow
-                    markeredgewidth=2,          # Set border width
-                    label='CMC FIP' if not fip_cmc_label_added else "", # Add label only once
-                    linestyle='None',           # Do not connect the points with a line
-                    zorder=6)                   # Ensure it's drawn on top
+            # Plot the FIP (triangle)
+            ax.plot(fip[0], fip[1], marker='^', color='darkblue', markersize=12,
+                    fillstyle='none', markeredgewidth=2,
+                    label='CMC FIP' if not fip_cmc_label_added else "", 
+                    linestyle='None', zorder=6)
             
-            # Add the text label (gn_index) next to the FIP marker
-            ax.text(fip[0] + 20, fip[1] + 20,   # Position with a small offset
-                    str(gn_idx),                # The text to display
-                    color='darkblue',           # Match the marker color
-                    fontsize=10, 
-                    fontweight='bold', 
-                    ha='left',                  # Horizontal alignment
-                    va='bottom')                # Vertical alignment
-            
-            # Set the flag to True after the first FIP is plotted
+            ax.text(fip[0] + 20, fip[1] + 20, str(gn_idx), color='darkblue', 
+                    fontsize=10, fontweight='bold', ha='left', va='bottom')
             fip_cmc_label_added = True
 
-            # --- Plot the FOP (square) and its text label ---
-            ax.plot(fop[0], fop[1], 
-                    marker='s',                 # Use square marker
-                    color='darkorange',         # Set color
-                    markersize=10,              # Set marker size
-                    fillstyle='none',           # Make it hollow
-                    markeredgewidth=2,          # Set border width
-                    label='CMC FOP' if not fop_cmc_label_added else "", # Add label only once
-                    linestyle='None',           # Do not connect the points with a line
-                    zorder=6)                   # Ensure it's drawn on top
+            # Plot the FOP (square)
+            ax.plot(fop[0], fop[1], marker='s', color='darkorange', markersize=10,
+                    fillstyle='none', markeredgewidth=2,
+                    label='CMC FOP' if not fop_cmc_label_added else "",
+                    linestyle='None', zorder=6)
 
-            # Add the text label (gn_index) next to the FOP marker
-            ax.text(fop[0] + 20, fop[1] + 20,   # Position with a small offset
-                    str(gn_idx),                # The text to display
-                    color='darkorange',         # Match the marker color
-                    fontsize=10, 
-                    fontweight='bold', 
-                    ha='left', 
-                    va='bottom')
-            
-            # Set the flag to True after the first FOP is plotted
+            ax.text(fop[0] + 20, fop[1] + 20, str(gn_idx), color='darkorange',
+                    fontsize=10, fontweight='bold', ha='left', va='bottom')
             fop_cmc_label_added = True
     
     handles, labels = ax.get_legend_handles_labels()
@@ -232,7 +207,7 @@ def plot_final_comparison_trajectories(gns: np.ndarray, data_center_pos: Tuple[f
     plt.tight_layout()
     if save_path:
         plt.savefig(save_path)
-        plt.close(fig) # Close the figure to free up memory
+        plt.close(fig) 
     else:
         plt.show()
 

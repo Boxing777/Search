@@ -25,6 +25,7 @@ from convex_trajectory_planner import ConvexTrajectoryPlanner
 from datetime import datetime
 from bob_planner import BOBPlanner
 from cmc_planner import CMCPlanner
+from bob_overlap import BOBOverlapPlanner 
 
 # --- Helper Class and Functions (No changes needed here) ---
 class Logger:
@@ -128,6 +129,13 @@ def run_single_simulation(run_prefix: str, output_dir: str):
         convex_planner=convex_planner
     )
     
+    bob_overlap_planner = BOBOverlapPlanner(
+        gns=sim_env.gn_positions,
+        data_center_pos=sim_env.data_center_pos,
+        traj_optimizer=traj_optimizer,
+        convex_planner=convex_planner
+    )
+
     cmc_planner = CMCPlanner(
         traj_optimizer=traj_optimizer,
         convex_planner=convex_planner
@@ -140,6 +148,9 @@ def run_single_simulation(run_prefix: str, output_dir: str):
     
     bob_trajectories, bob_path_lengths = {}, {}
     bob_mission_times = {}
+
+    bob_f_trajectories, bob_f_path_lengths = {}, {}
+    bob_f_mission_times = {}
     
     cmc_mission_times = {}
     cmc_plot_points = {}
@@ -299,13 +310,24 @@ def run_single_simulation(run_prefix: str, output_dir: str):
 
         print("\n  -> Running BOB Planner for the same sequence...")
         bob_result = bob_planner.plan_path(gn_indices_route, required_data_per_gn)
-        
+
         
         bob_mission_times[uav_id] = bob_result['total_time']
         bob_path_lengths[uav_id] = bob_result['total_length']
         bob_trajectories[uav_id] = bob_result['segments'] 
         
         print(f"     BOB Mission Time: {bob_result['total_time']:.2f}s | Path Length: {bob_result['total_length']:.2f}m")
+        
+        print("\n  -> Running BOB-F (Overlap) Planner for the same sequence...")
+        bob_f_result = bob_overlap_planner.plan_path(gn_indices_route, required_data_per_gn)
+        
+        bob_f_mission_times[uav_id] = bob_f_result['total_time']
+        bob_f_path_lengths[uav_id] = bob_f_result['total_length']
+        bob_f_trajectories[uav_id] = bob_f_result['segments']
+        
+        print(f"     BOB-F Mission Time: {bob_f_result['total_time']:.2f}s | Path Length: {bob_f_result['total_length']:.2f}m")
+        
+
         print("\n  -> Running CMC Planner for the same sequence...")
         
         cmc_result = cmc_planner.estimate_mission_time(gn_indices_route, required_data_per_gn)
@@ -336,6 +358,7 @@ def run_single_simulation(run_prefix: str, output_dir: str):
     system_mct_v_shaped = max(uav_mission_times.values()) if uav_mission_times else 0
     system_mct_convex = max(convex_mission_times.values()) if convex_mission_times else 0
     system_mct_bob = max(bob_mission_times.values()) if bob_mission_times else 0
+    system_mct_bob_f = max(bob_f_mission_times.values()) if bob_f_mission_times else 0 
     system_mct_cmc = max(cmc_mission_times.values()) if cmc_mission_times else 0
     total_execution_time = time.time() - start_time
     
@@ -346,19 +369,23 @@ def run_single_simulation(run_prefix: str, output_dir: str):
             print(f"  V-Shaped Mission Time: {uav_mission_times.get(uav_id, 0):.2f}s | Path Length: {v_shaped_path_lengths.get(uav_id, 0):.2f}m")
             print(f"  Convex Mission Time:   {convex_mission_times.get(uav_id, 0):.2f}s | Path Length: {convex_path_lengths.get(uav_id, 0):.2f}m")
             print(f"  CMC Mission Time:      {cmc_mission_times.get(uav_id, 0):.2f}s | Path Length: {convex_path_lengths.get(uav_id, 0):.2f}m")
-            print(f"  BOB Mission Time:      {bob_mission_times.get(uav_id, 0):.2f}s | Path Length: {bob_path_lengths.get(uav_id, 0):.2f}m")
+            print(f"  BOB-V Mission Time:    {bob_mission_times.get(uav_id, 0):.2f}s | Path Length: {bob_path_lengths.get(uav_id, 0):.2f}m")
+            print(f"  BOB-F Mission Time:    {bob_f_mission_times.get(uav_id, 0):.2f}s | Path Length: {bob_f_path_lengths.get(uav_id, 0):.2f}m") # <<< [NEW]
     
     print(f"\nSystem Mission Completion Time (MCT) for V-Shaped: {system_mct_v_shaped:.2f}s")
     print(f"System Mission Completion Time (MCT) for Convex:   {system_mct_convex:.2f}s")
     print(f"System Mission Completion Time (MCT) for CMC:      {system_mct_cmc:.2f}s")
-    print(f"System Mission Completion Time (MCT) for BOB:   {system_mct_bob:.2f}s")
+    print(f"System Mission Completion Time (MCT) for BOB-V:    {system_mct_bob:.2f}s")
+    print(f"System Mission Completion Time (MCT) for BOB-F:    {system_mct_bob_f:.2f}s") # <<< [NEW]
     print(f"Total script execution time: {total_execution_time:.2f}s")
     
     print("\n[Step 5/5] Visualizing final combined trajectories...")
     vis.plot_final_comparison_trajectories(
         gns=sim_env.gn_positions, data_center_pos=sim_env.data_center_pos,
         v_shaped_trajectories=final_trajectories, convex_trajectories=convex_trajectories,
-        bob_trajectories=bob_trajectories, cmc_plot_points=cmc_plot_points, area_width=params.AREA_WIDTH, 
+        bob_trajectories=bob_trajectories, 
+        bob_f_trajectories=bob_f_trajectories,
+        cmc_plot_points=cmc_plot_points, area_width=params.AREA_WIDTH, 
         area_height=params.AREA_HEIGHT,comm_radius=traj_optimizer.comm_radius_d,
         save_path=os.path.join(output_dir, f'{run_prefix}_final_trajectories.png')
     )
@@ -403,4 +430,3 @@ if __name__ == "__main__":
         print(f"--- Finished {run_prefix.upper()} ---")
 
     print(f"\nAll runs completed. Check the '{batch_run_dir}' directory.")
-    
