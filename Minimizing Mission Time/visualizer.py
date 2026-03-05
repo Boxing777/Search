@@ -114,28 +114,28 @@ def plot_final_comparison_trajectories(gns: np.ndarray, data_center_pos: Tuple[f
                     ax.plot(oh[0], oh[1], 'o', color=color, markersize=8, markeredgecolor='black')
                 sequence_counter += 1
                 
-    so_label_added = False
-    eo_label_added = False
+    # so_label_added = False
+    # eo_label_added = False
     for i, (uav_id, path) in enumerate(convex_trajectories.items()):
         color = 'darkblue' if i==0 else 'darkgreen'
         if len(path) > 0:
             ax.plot(path[:, 0], path[:, 1], color=color, linestyle=':', linewidth=2.0, 
                     label=f'{uav_id} Convex (Shortest Path)')
 
-            so_points = path[1:-1:2]
-            eo_points = path[2:-1:2]
+            # so_points = path[1:-1:2]
+            # eo_points = path[2:-1:2]
 
-            if len(so_points) > 0:
-                ax.plot(so_points[:, 0], so_points[:, 1], 'x', color='green', markersize=8, 
-                        markeredgewidth=2, label='Start of Collection (So)' if not so_label_added else "", 
-                        zorder=5)
-                so_label_added = True
+            # if len(so_points) > 0:
+            #     ax.plot(so_points[:, 0], so_points[:, 1], 'x', color='green', markersize=8, 
+            #             markeredgewidth=2, label='Start of Collection (So)' if not so_label_added else "", 
+            #             zorder=5)
+            #     so_label_added = True
 
-            if len(eo_points) > 0:
-                ax.plot(eo_points[:, 0], eo_points[:, 1], 'o', color='purple', markersize=8,
-                        fillstyle='none', markeredgewidth=2, label='End of Collection (Eo)' if not eo_label_added else "",
-                        zorder=5)
-                eo_label_added = True
+            # if len(eo_points) > 0:
+            #     ax.plot(eo_points[:, 0], eo_points[:, 1], 'o', color='purple', markersize=8,
+            #             fillstyle='none', markeredgewidth=2, label='End of Collection (Eo)' if not eo_label_added else "",
+            #             zorder=5)
+            #     eo_label_added = True
 
     for i, (uav_id, segments) in enumerate(bob_trajectories.items()):
         color = 'cyan' 
@@ -172,13 +172,13 @@ def plot_final_comparison_trajectories(gns: np.ndarray, data_center_pos: Tuple[f
         ax.plot([previous_pos[0], data_center_pos[0]], [previous_pos[1], data_center_pos[1]], color=color, linestyle='--', linewidth=1.5, zorder=2)
 
     fip_cmc_label_added = False
-    fop_cmc_label_added = False
+    # fop_cmc_label_added = False
 
     for uav_id, points_list in cmc_plot_points.items():
         for point_info in points_list:
             gn_idx = point_info['gn_index']
             fip = point_info['fip']
-            fop = point_info['fop']
+            # fop = point_info['fop']
             
             # Plot the FIP (triangle)
             ax.plot(fip[0], fip[1], marker='^', color='darkblue', markersize=12,
@@ -191,14 +191,14 @@ def plot_final_comparison_trajectories(gns: np.ndarray, data_center_pos: Tuple[f
             fip_cmc_label_added = True
 
             # Plot the FOP (square)
-            ax.plot(fop[0], fop[1], marker='s', color='darkorange', markersize=10,
-                    fillstyle='none', markeredgewidth=2,
-                    label='CMC FOP' if not fop_cmc_label_added else "",
-                    linestyle='None', zorder=6)
+            # ax.plot(fop[0], fop[1], marker='s', color='darkorange', markersize=10,
+            #         fillstyle='none', markeredgewidth=2,
+            #         label='CMC FOP' if not fop_cmc_label_added else "",
+            #         linestyle='None', zorder=6)
 
-            ax.text(fop[0] + 20, fop[1] + 20, str(gn_idx), color='darkorange',
-                    fontsize=10, fontweight='bold', ha='left', va='bottom')
-            fop_cmc_label_added = True
+            # ax.text(fop[0] + 20, fop[1] + 20, str(gn_idx), color='darkorange',
+            #         fontsize=10, fontweight='bold', ha='left', va='bottom')
+            # fop_cmc_label_added = True
     
     handles, labels = ax.get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
