@@ -12,7 +12,10 @@
 # 2. Strategy 2 (Overlapping): Triggered when GN_i and GN_{i+1} overlap.
 #    - Breaks the boundary constraint.
 #    - Searches for an optimal "Internal Switching Point" (P_flex) inside the
-#      intersection area (sampled along the line connecting centers).
+#      intersection area.
+#    - [NEW] Uses a Cross-Sampling method (T-shape) for P_flex candidates:
+#      samples along the line connecting centers AND along the half-perpendicular
+#      bisector that is closer to the incoming path (SP).
 #    - Performs joint optimization of the path:
 #      SP -> FIP_i -> OH_i -> P_flex -> OH_{i+1} -> FOP_{i+1} -> Anchor_{i+2}
 # ==============================================================================
@@ -27,7 +30,7 @@ import parameters as params
 
 class BOBOverlapPlanner:
     """
-    Implements the BOB-F (Flexible Handover) planning algorithm.
+    Implements the BOB-F (Flexible Handover) planning algorithm with Cross-Sampling.
     """
 
     def __init__(self,
@@ -72,37 +75,80 @@ class BOBOverlapPlanner:
         t = np.clip(t, 0, 1)
         return p1 + t * d
 
-    def _generate_p_flex_candidates(self, center_i: np.ndarray, center_next: np.ndarray, num_samples: int = 10) -> List[np.ndarray]:
-        dist = np.linalg.norm(center_next - center_i)
-        if dist == 0: return [center_i]
-        
-        R = self.comm_radius
-       
-        start_dist = max(0.0, dist - R)
-        end_dist = min(dist, R)
-        
-        if start_dist > end_dist: 
-            return []
+    # <<<--- [REVISED] T-Shape Cross-Sampling Logic ---<<<
+    def _generate_p_flex_candidates(self, center_i: np.ndarray, center_next: np.ndarray, sp: np.ndarray, total_samples: int = 10) -> List[np.ndarray]:
+        """
+        Generates candidate points for P_flex using a T-shape pattern:
+        1. Along the line connecting the centers.
+        2. Along the perpendicular bisector (the half closer to SP).
+        """
+        dist_centers = np.linalg.norm(center_next - center_i)
+        if dist_centers == 0 or dist_centers >= 2 * self.comm_radius: 
+            return [center_i]
 
-       
-        start_ratio = start_dist / dist
-        end_ratio = end_dist / dist
-        
-        t_values = np.linspace(start_ratio, end_ratio, num_samples)
-        
+        R = self.comm_radius
         candidates = []
-        vec = center_next - center_i
-        for t in t_values:
-            candidates.append(center_i + t * vec)
+        
+        # Split samples: half for center-line, half for bisector.
+        # Ensure we have at least some points for each if total_samples is small.
+        num_center_samples = max(2, total_samples // 2)
+        num_bisect_samples = max(1, total_samples - num_center_samples)
+
+        # --- 1. Sample along the line connecting centers ---
+        start_dist = max(0.0, dist_centers - R)
+        end_dist = min(dist_centers, R)
+        
+        if start_dist <= end_dist:
+            start_ratio = start_dist / dist_centers
+            end_ratio = end_dist / dist_centers
+            t_values = np.linspace(start_ratio, end_ratio, num_center_samples)
+            vec_centers = center_next - center_i
+            for t in t_values:
+                candidates.append(center_i + t * vec_centers)
+
+        # --- 2. Sample along the perpendicular bisector (T-shape) ---
+        # Find the intersection points (tips) of the two circles
+        d = dist_centers
+        # Distance from center_i to the chord connecting the two intersection points
+        a = (R**2 - R**2 + d**2) / (2 * d) # Since radii are equal, a = d/2
+        # Height of the intersection points above the center-line
+        h = np.sqrt(max(0, R**2 - a**2))
+        
+        # Midpoint of the center-line (where the bisector crosses)
+        midpoint = center_i + a * (center_next - center_i) / d
+        
+        # Direction vectors for the perpendicular bisector
+        dx = (center_next[0] - center_i[0]) / d
+        dy = (center_next[1] - center_i[1]) / d
+        
+        # The two tips of the lens-shaped intersection area
+        tip1 = np.array([midpoint[0] - h * dy, midpoint[1] + h * dx])
+        tip2 = np.array([midpoint[0] + h * dy, midpoint[1] - h * dx])
+        
+        # Determine which tip is closer to the starting point (SP)
+        dist_sp_tip1 = np.linalg.norm(sp - tip1)
+        dist_sp_tip2 = np.linalg.norm(sp - tip2)
+        
+        target_tip = tip1 if dist_sp_tip1 < dist_sp_tip2 else tip2
+        
+        # Sample along the line from midpoint to the target_tip
+        # We use num_bisect_samples + 1 and slice [1:] to avoid duplicating the midpoint
+        # which was already sampled in the center-line step (or is very close to it).
+        bisect_t_values = np.linspace(0, 1, num_bisect_samples + 1)[1:]
+        vec_bisect = target_tip - midpoint
+        
+        for t in bisect_t_values:
+            candidates.append(midpoint + t * vec_bisect)
             
         return candidates
+    # >>>---------------------------------------------->>>
 
     # --- Main Planning Logic ---
     def plan_path(self, ordered_gn_indices: List[int], required_data_per_gn: float) -> Dict:
         if not ordered_gn_indices:
             return {"segments": [], "total_time": 0.0, "total_length": 0.0}
 
-        print("\n--- Planning with BOB-F (Flexible Handover) Method ---")
+        print("\n--- Planning with BOB-F (Flexible Handover & Cross-Sampling) Method ---")
 
         # Step 1: Pre-compute Global Anchors (FIP_cmc) using Convex + CMC logic
         print("  - Step 1: Calculating Global Anchors (FIP_cmc)...")
@@ -113,7 +159,6 @@ class BOBOverlapPlanner:
         shortest_path = convex_result["path"]
         fip_cmc_anchors = {}
         
-        # Reuse logic to find FIP_cmc for each GN
         for gn_index in ordered_gn_indices:
             gn_coord = self.all_gns[gn_index]
             all_intersections = []
@@ -138,7 +183,7 @@ class BOBOverlapPlanner:
                 
                 if path_progress:
                     path_progress.sort(key=lambda x: x[0])
-                    fip_cmc_anchors[gn_index] = path_progress[0][1] # FIP is the first intersection
+                    fip_cmc_anchors[gn_index] = path_progress[0][1] 
 
         # Step 2: Sequential Optimization with Flexible Handover
         print("  - Step 2: Performing sequential optimization with overlap detection...")
@@ -154,7 +199,6 @@ class BOBOverlapPlanner:
             gn_index = ordered_gn_indices[i]
             current_gn_coord = self.all_gns[gn_index]
             
-            # Check for overlap with the NEXT node
             has_overlap = False
             if i < len(ordered_gn_indices) - 1:
                 next_gn_index = ordered_gn_indices[i+1]
@@ -166,46 +210,33 @@ class BOBOverlapPlanner:
             if has_overlap:
                 print(f"    -> Overlap detected between GN {gn_index} and GN {next_gn_index}. Using Flexible Handover.")
                 
-                # 1. Define Global Anchor for the end of the sequence (i+2)
                 if i + 2 < len(ordered_gn_indices):
                     target_gn_idx = ordered_gn_indices[i+2]
                     global_anchor = fip_cmc_anchors.get(target_gn_idx, self.all_gns[target_gn_idx])
                 else:
                     global_anchor = self.data_center_pos
 
-                # 2. Generate Candidate Sets
-                # FIP candidates for GN i (on boundary)
                 angles = np.linspace(0, 2 * np.pi, 36, endpoint=False)
                 fip_i_candidates = [current_gn_coord + self.comm_radius * np.array([np.cos(a), np.sin(a)]) for a in angles]
-                
-                # FOP candidates for GN i+1 (on boundary)
                 fop_next_candidates = [next_gn_coord + self.comm_radius * np.array([np.cos(a), np.sin(a)]) for a in angles]
                 
-                # P_flex candidates (inside overlap)
-                p_flex_candidates = self._generate_p_flex_candidates(current_gn_coord, next_gn_coord)
+                # <<< [CHANGED] Pass previous_fop (SP) to determine the correct bisector half
+                p_flex_candidates = self._generate_p_flex_candidates(current_gn_coord, next_gn_coord, previous_fop)
 
-                # 3. Decoupled Optimization
                 min_combined_cost = float('inf')
                 best_combined_config = {}
 
-                # Loop through P_flex (the pivot)
                 for p_flex in p_flex_candidates:
                     
-                    # A. Optimize First Leg: SP -> FIP_i -> OH_i -> P_flex
-                    #    P_flex acts as the FOP for GN i (inside circle)
+                    # A. Optimize First Leg
                     best_leg_i_cost = float('inf')
                     best_leg_i_data = {}
                     
-                    # Check if SP is already inside
                     is_sp_inside = np.linalg.norm(previous_fop - current_gn_coord) <= self.comm_radius
-                    # If SP is inside, we can just start from SP (FIP=SP)
                     current_fip_candidates = [previous_fop] if is_sp_inside else fip_i_candidates
 
                     for fip in current_fip_candidates:
                         t_in = np.linalg.norm(fip - previous_fop) / self.uav_speed
-                        
-                        # Find V-shape time. FIP is boundary/SP, FOP (P_flex) is inside.
-                        # Phase 3 solver handles this asymmetry.
                         c_max = self.traj_optimizer.calculate_fm_max_capacity(fip, p_flex, current_gn_coord)
                         
                         if required_data_per_gn <= c_max:
@@ -218,7 +249,6 @@ class BOBOverlapPlanner:
                             t_hover = (required_data_per_gn - c_max) / self.traj_optimizer.hover_datarate
                             t_collect_theo = t_flight + t_hover
                         
-                        # Physical Constraint
                         phy_dist = np.linalg.norm(opt_oh - fip) + np.linalg.norm(p_flex - opt_oh)
                         t_collect = max(t_collect_theo, phy_dist / self.uav_speed)
                         
@@ -231,13 +261,11 @@ class BOBOverlapPlanner:
                                 'dist_in': np.linalg.norm(fip - previous_fop), 'dist_col': phy_dist
                             }
 
-                    # B. Optimize Second Leg: P_flex -> OH_next -> FOP_next -> Anchor
-                    #    P_flex acts as the FIP for GN i+1 (inside circle)
+                    # B. Optimize Second Leg
                     best_leg_next_cost = float('inf')
                     best_leg_next_data = {}
 
                     for fop in fop_next_candidates:
-                        # Find V-shape time. FIP (P_flex) is inside, FOP is on boundary.
                         c_max = self.traj_optimizer.calculate_fm_max_capacity(p_flex, fop, next_gn_coord)
                         
                         if required_data_per_gn <= c_max:
@@ -253,7 +281,6 @@ class BOBOverlapPlanner:
                         phy_dist = np.linalg.norm(opt_oh - p_flex) + np.linalg.norm(fop - opt_oh)
                         t_collect = max(t_collect_theo, phy_dist / self.uav_speed)
                         
-                        # Flight out to Global Anchor
                         t_out = np.linalg.norm(global_anchor - fop) / self.uav_speed
                         
                         cost = t_collect + t_out
@@ -274,10 +301,9 @@ class BOBOverlapPlanner:
                             'leg_next': best_leg_next_data
                         }
 
-                # 4. Save Results & Update
                 if not best_combined_config:
-                    print(f"  - CRITICAL WARNING: Strategy 2 failed to find a valid handover for GN {gn_index}. Falling back to Strategy 1 logic.")
-                    raise RuntimeError("Strategy 2 optimization failed. Check data requirements or network geometry.")
+                    print(f"  - CRITICAL WARNING: Strategy 2 failed for GN {gn_index}. Falling back.")
+                    raise RuntimeError("Strategy 2 optimization failed.")
                 
                 # Save Leg i
                 res_i = best_combined_config['leg_i']
@@ -286,7 +312,7 @@ class BOBOverlapPlanner:
                     'gn_index': gn_index, 'service_time': res_i['collect_time'] + res_i['dist_in']/self.uav_speed,
                     'fly_in_dist': res_i['dist_in'], 'collection_dist': res_i['dist_col']
                 })
-                total_mission_time += res_i['time'] # time = t_in + t_col
+                total_mission_time += res_i['time'] 
                 total_path_length += res_i['dist_in'] + res_i['dist_col']
 
                 # Save Leg i+1
@@ -294,20 +320,18 @@ class BOBOverlapPlanner:
                 bob_path_segments.append({
                     'fip': res_next['fip'], 'fop': res_next['fop'], 'oh': res_next['oh'],
                     'gn_index': next_gn_index, 'service_time': res_next['collect_time'], 
-                    'fly_in_dist': 0.0, # Internal handover, no fly_in
+                    'fly_in_dist': 0.0,
                     'collection_dist': res_next['dist_col']
                 })
-                # Note: res_next['time'] includes t_out, but we only add collection time here.
-                # t_out will be accounted for as t_in for the NEXT leg (or final return).
+                
                 total_mission_time += res_next['collect_time']
                 total_path_length += res_next['dist_col']
 
                 previous_fop = res_next['fop']
-                i += 2 # Skip the next GN as it's already processed
+                i += 2 
 
             # --- Strategy 1: Non-Overlapping Case (Standard BOB-V) ---
             else:
-                # Determine target anchor
                 if i == len(ordered_gn_indices) - 1:
                     next_target_anchor = self.data_center_pos
                 else:
