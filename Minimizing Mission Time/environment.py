@@ -1,4 +1,13 @@
-# environment.py 
+# ==============================================================================
+#                      Simulation Environment Generation
+#
+# File Objective:
+# This file establishes the physical simulation world. It generates Ground Nodes
+# (GNs) randomly and uniformly within the area while maintaining specific 
+# geometric constraints regarding boundaries, the Data Center, and 
+# inter-node spacing.
+# ==============================================================================
+
 import numpy as np
 from typing import Optional, List
 
@@ -8,123 +17,94 @@ def generate_gns(num_gns: int, area_width: float, area_height: float,
                    margin: float, data_center_pos: np.ndarray, 
                    seed: Optional[int] = None) -> np.ndarray:
     """
-    Generates 2D coordinates for GNs in "overlapping pairs".
-    Each pair consists of two GNs whose communication zones overlap.
-    Different pairs are guaranteed to not overlap with each other.
+    Generates 2D coordinates for GNs using a random uniform distribution
+    subject to three constraints:
+    1. Boundary: GNs and their comm radius remain within the simulation area.
+    2. Data Center: GNs' comm ranges do not cover the Data Center.
+    3. Minimum Spacing: The distance between any two GNs must be >= 0.7 * margin.
 
     Args:
-        num_gns (int): The total number of GNs (MUST BE AN EVEN NUMBER).
-        area_width (float): The width of the main area.
-        area_height (float): The height of the main area.
-        margin (float): The safety margin (comm_radius, D).
-        data_center_pos (np.ndarray): The coordinates of the data center.
-        seed (Optional[int], optional): A seed for the random number generator.
+        num_gns (int): Total number of nodes to generate.
+        area_width (float): Width of the simulation area.
+        area_height (float): Height of the simulation area.
+        margin (float): Communication radius (D).
+        data_center_pos (np.ndarray): Coordinates of the Data Center.
+        seed (Optional[int]): Seed for reproducibility.
 
     Returns:
-        np.ndarray: An array of shape (num_gns, 2) with the (x, y) coordinates.
+        np.ndarray: Array of shape (num_gns, 2).
     """
-    if num_gns % 2 != 0:
-        raise ValueError("num_gns must be an even number for paired generation.")
-        
     if seed is not None:
         np.random.seed(seed)
 
     gn_positions: List[np.ndarray] = []
-    num_pairs = num_gns // 2
     
-    max_attempts_total = num_pairs * 1000
+    # Maximum attempts to prevent infinite loops in crowded areas
+    max_attempts = num_gns * 2000 
     
-    # Define the valid generation area for anchor points
+    # Valid generation bounds (margin ensures the circle is inside the area)
     low_x, high_x = margin, area_width - margin
     low_y, high_y = margin, area_height - margin
 
     if low_x >= high_x or low_y >= high_y:
-        raise ValueError(f"Margin ({margin}) is too large for the area dimensions.")
+        raise ValueError("Margin is too large for the area dimensions.")
 
-    for _ in range(max_attempts_total):
+    # Rule: Distance between any two nodes must be >= 0.7 * D
+    min_inter_node_dist = 0.7 * margin
+
+    for _ in range(max_attempts):
         if len(gn_positions) >= num_gns:
             break
 
-        # --- Step 1: Generate a valid "Anchor" GN for the new pair ---
-        anchor_candidate = None
-        for _ in range(100): # Attempts to find a valid anchor
-            pos = np.array([np.random.uniform(low_x, high_x), np.random.uniform(low_y, high_y)])
-            
-            if np.linalg.norm(pos - data_center_pos) <= margin:
-                continue
-
-            is_far_from_others = True
-            for existing_pos in gn_positions:
-                if np.linalg.norm(pos - existing_pos) < 2 * margin:
-                    is_far_from_others = False
-                    break
-            
-            if is_far_from_others:
-                anchor_candidate = pos
-                break
+        # Generate a candidate position uniformly
+        candidate_pos = np.array([
+            np.random.uniform(low_x, high_x),
+            np.random.uniform(low_y, high_y)
+        ])
         
-        if anchor_candidate is None:
+        # Constraint 1: Check distance to Data Center (Must be > D)
+        if np.linalg.norm(candidate_pos - data_center_pos) <= margin:
             continue
 
-        # --- Step 2: Generate a "Partner" GN that overlaps with the anchor ---
-        partner_candidate = None
-        for _ in range(100): # Attempts to find a valid partner
-            angle = np.random.uniform(0, 2 * np.pi)
-            dist = np.random.uniform(0.7 * margin, 1.8 * margin)
-            
-            offset = np.array([np.cos(angle), np.sin(angle)]) * dist
-            pos = anchor_candidate + offset
-
-            if not (low_x <= pos[0] <= high_x and low_y <= pos[1] <= high_y):
-                continue
-
-            if np.linalg.norm(pos - data_center_pos) <= margin:
-                continue
-            
-            is_far_from_others = True
-            for existing_pos in gn_positions:
-                if np.linalg.norm(pos - existing_pos) < 2 * margin:
-                    is_far_from_others = False
-                    break
-            
-            if is_far_from_others:
-                partner_candidate = pos
+        # Constraint 2: Check distance to all existing nodes (Must be >= 0.7 * D)
+        is_too_close = False
+        for existing_pos in gn_positions:
+            if np.linalg.norm(candidate_pos - existing_pos) < min_inter_node_dist:
+                is_too_close = True
                 break
         
-        if partner_candidate is not None:
-            gn_positions.append(anchor_candidate)
-            gn_positions.append(partner_candidate)
-            print(f"Generated pair {len(gn_positions)//2}/{num_pairs}. "
-                  f"Distance: {np.linalg.norm(anchor_candidate - partner_candidate):.2f}m")
+        if not is_too_close:
+            gn_positions.append(candidate_pos)
 
+    # Error handling if the area is too crowded to satisfy constraints
     if len(gn_positions) < num_gns:
-        raise RuntimeError(f"Failed to generate {num_gns} GNs in pairs after {max_attempts_total} attempts.")
+        raise RuntimeError(f"Failed to generate {num_gns} GNs. Only {len(gn_positions)} placed. "
+                           "The area might be too small for the given min_dist constraint.")
 
-    print(f"Successfully generated {len(gn_positions)} GNs in {num_pairs} overlapping pairs.")
+    print(f"Successfully generated {num_gns} GNs using random uniform placement.")
     return np.array(gn_positions)
 
 
-# +++ MISSING CLASS DEFINITION - ADD THIS BACK +++
+# --- Class Structure for Environment Management ---
+
 class SimulationEnvironment:
     """
-    A container for all static elements of the simulation world.
+    Container for simulation environment data and node management.
     """
     def __init__(self, params, comm_radius: float):
         """
-        Constructs the SimulationEnvironment.
-
         Args:
-            params: A module or object containing simulation parameters.
-            comm_radius (float): The communication radius, used as a margin.
+            params: Configuration module containing AREA and NUM_GNS.
+            comm_radius (float): The communication radius D.
         """
         self.area_width: float = params.AREA_WIDTH
         self.area_height: float = params.AREA_HEIGHT
         self.data_center_pos: np.ndarray = np.array(params.DATA_CENTER_POS)
         
+        # Retrieve the random seed from parameters if available
         seed = getattr(params, 'RANDOM_SEED', None)
 
-        print(f"Generating GNs in pairs with safety margin D={comm_radius:.2f}m.")
-        
+        # Generate the GN positions using the uniform distribution logic
         self.gn_positions: np.ndarray = generate_gns(
             num_gns=params.NUM_GNS,
             area_width=self.area_width,
@@ -141,4 +121,4 @@ class SimulationEnvironment:
         if 0 <= gn_index < len(self.gn_positions):
             return self.gn_positions[gn_index]
         else:
-            raise IndexError(f"GN index {gn_index} is out of bounds.")      
+            raise IndexError(f"GN index {gn_index} is out of bounds.")
