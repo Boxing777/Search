@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation, PillowWriter
@@ -41,6 +40,7 @@ class TrajectoryOptimizer:
         for _ in range(40):
             mid = (low + high) / 2
             d3d = np.sqrt(mid**2 + self.uav_alt**2)
+            if d3d == 0: continue
             elev = np.degrees(np.arcsin(self.uav_alt / d3d))
             fc, eta = self.params['CARRIER_FREQUENCY'], self.params['PATH_LOSS_EXPONENT']
             fspl = ((4*np.pi*fc/SPEED_OF_LIGHT)**eta) * (d3d**eta)
@@ -101,33 +101,46 @@ class TrajectoryOptimizer:
 # [2] VISUAL SANDBOX CLASS
 # ==============================================================================
 class VisualSandbox:
-    def __init__(self):
+    def __init__(self, req1_mbit: float = 40.0, req2_mbit: float = 40.0):
+        """
+        Initializes the sandbox with individual data requirements.
+        :param req1_mbit: Data required for Ground Node 1 (in Mbits)
+        :param req2_mbit: Data required for Ground Node 2 (in Mbits)
+        """
         self.opt = TrajectoryOptimizer(PARAMS)
         self.R = self.opt.comm_radius
         self.gn1 = np.array([1000.0, 1000.0])
         self.gn2 = np.array([1000.0 + 1.25 * self.R, 1000.0])
         self.sp = np.array([600.0, 700.0])
         self.anchor = np.array([1800.0, 700.0])
-        self.req = 40 * 1e6
+        
+        # Individual data requirements converted to bits
+        self.req1 = req1_mbit * 1e6
+        self.req2 = req2_mbit * 1e6
 
     def get_path_segments(self, p_flex):
         angles = np.linspace(0, 2*np.pi, 18, endpoint=False)
         fip_cands = [self.gn1 + self.R * np.array([np.cos(a), np.sin(a)]) for a in angles]
         fop_cands = [self.gn2 + self.R * np.array([np.cos(a), np.sin(a)]) for a in angles]
+        
+        # Optimize leg for GN1 using its specific requirement
         best_t1, best_pts1 = float('inf'), None
         for fip in fip_cands:
             t_in = np.linalg.norm(fip - self.sp)/20.0
-            oh = self.opt.find_v_shape(fip, p_flex, self.gn1, self.req)
+            oh = self.opt.find_v_shape(fip, p_flex, self.gn1, self.req1)
             t_col = (np.linalg.norm(oh-fip) + np.linalg.norm(p_flex - oh))/20.0
             if t_in + t_col < best_t1:
                 best_t1, best_pts1 = t_in + t_col, (fip, oh)
+        
+        # Optimize leg for GN2 using its specific requirement
         best_t2, best_pts2 = float('inf'), None
         for fop in fop_cands:
-            oh = self.opt.find_v_shape(p_flex, fop, self.gn2, self.req)
+            oh = self.opt.find_v_shape(p_flex, fop, self.gn2, self.req2)
             t_col = (np.linalg.norm(oh-p_flex) + np.linalg.norm(fop - oh))/20.0
             t_out = np.linalg.norm(self.anchor - fop)/20.0
             if t_col + t_out < best_t2:
                 best_t2, best_pts2 = t_col + t_out, (oh, fop)
+                
         return best_t1 + best_t2, best_pts1, best_pts2
 
     def get_skeleton(self, n):
@@ -158,7 +171,7 @@ class VisualSandbox:
         scat_now = ax.scatter([], [], c='red', s=100, edgecolors='black', zorder=5)
         scat_best = ax.scatter([], [], c='yellow', marker='D', s=150, edgecolors='green', label='Best P_flex', zorder=11)
         bridge_line, = ax.plot([], [], 'cyan', linestyle=':', linewidth=2, label='Bridge')
-        text_info = ax.text(0.02, 0.95, '', transform=ax.transAxes, bbox=dict(facecolor='white', alpha=0.8))
+        text_info = ax.text(0.02, 0.90, '', transform=ax.transAxes, bbox=dict(facecolor='white', alpha=0.8))
 
         frames_data = []
         global_best_p, global_min_t = None, float('inf')
@@ -189,7 +202,6 @@ class VisualSandbox:
                 if t_total < global_min_t: global_min_t, global_best_p = t_total, p
                 frames_data.append({'p': p, 'msg': 'Bridge Search', 'ba': ba, 'bb': bb, 'is_final': False})
 
-        # Add 5 final frames to highlight the winner
         for _ in range(5):
             frames_data.append({'p': global_best_p, 'msg': 'FINAL SELECTION', 'is_final': True})
 
@@ -203,8 +215,7 @@ class VisualSandbox:
             if d['is_final']:
                 line_best.set_data(xpath, ypath)
                 scat_best.set_offsets([p])
-                line_path.set_alpha(0) # Hide search line
-                scat_now.set_alpha(0)
+                line_path.set_alpha(0); scat_now.set_alpha(0)
             else:
                 line_path.set_data(xpath, ypath)
                 scat_now.set_offsets([p])
@@ -213,7 +224,12 @@ class VisualSandbox:
             if 'ba' in d: bridge_line.set_data([d['ba'][0], d['bb'][0]], [d['ba'][1], d['bb'][1]])
             else: bridge_line.set_data([], [])
 
-            text_info.set_text(f"Strategy {strategy_type}\n{d['msg']}\nTime: {total_t:.2f}s")
+            text_info.set_text(
+                f"Strategy {strategy_type}\n"
+                f"Req GN1: {self.req1/1e6:.0f}Mb, GN2: {self.req2/1e6:.0f}Mb\n"
+                f"{d['msg']}\n"
+                f"Total Time: {total_t:.2f}s"
+            )
             return line_path, line_best, scat_all, scat_now, scat_best, bridge_line, text_info
 
         ani = FuncAnimation(fig, update, frames=len(frames_data), blit=False)
@@ -222,8 +238,15 @@ class VisualSandbox:
         ani.save(filename, writer=PillowWriter(fps=2))
         plt.close(fig)
 
+# ==============================================================================
+# [3] MAIN EXECUTION
+# ==============================================================================
 if __name__ == "__main__":
-    sandbox = VisualSandbox()
+    # You can customize individual data requirements here (in Mbits)
+    # Example: GN1 needs 10Mb, GN2 needs 80Mb
+    sandbox = VisualSandbox(req1_mbit=120.0, req2_mbit=8.0)
+    
     sandbox.animate_strategy(1, "strategy_1_t_shape.gif")
     sandbox.animate_strategy(2, "strategy_2_triangular.gif")
-    print("\nSUCCESS: Highlighted GIFs created.")
+    print("\nSUCCESS: Highlighted GIFs created with custom requirements.")
+    
