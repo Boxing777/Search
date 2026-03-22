@@ -243,10 +243,18 @@ class VisualSandbox:
 # ==============================================================================
 if __name__ == "__main__":
     # You can customize individual data requirements here (in Mbits)
-    # Example: GN1 needs 10Mb, GN2 needs 80Mb
-    sandbox = VisualSandbox(req1_mbit=120.0, req2_mbit=8.0)
+    # Example: GN1 needs 120Mb, GN2 needs 8Mb
+    req_gn1 = 40.0
+    req_gn2 = 80.0
     
-    sandbox.animate_strategy(1, "strategy_1_t_shape.gif")
-    sandbox.animate_strategy(2, "strategy_2_triangular.gif")
-    print("\nSUCCESS: Highlighted GIFs created with custom requirements.")
+    sandbox = VisualSandbox(req1_mbit=req_gn1, req2_mbit=req_gn2)
     
+    filename_strategy_1 = f"strategy_1_t_shape_{int(req_gn1)}_{int(req_gn2)}.gif"
+    filename_strategy_2 = f"strategy_2_triangular_{int(req_gn1)}_{int(req_gn2)}.gif"
+    
+    sandbox.animate_strategy(1, filename_strategy_1)
+    sandbox.animate_strategy(2, filename_strategy_2)
+    
+    print(f"\nSUCCESS: Highlighted GIFs created:")
+    print(f"  - {filename_strategy_1}")
+    print(f"  - {filename_strategy_2}")
