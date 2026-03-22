@@ -1,7 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import os
 from matplotlib.animation import FuncAnimation, PillowWriter
 from typing import Dict, Tuple, List
+
 
 # ==============================================================================
 # [1] CORE PHYSICS & MODELS
@@ -241,20 +243,32 @@ class VisualSandbox:
 # ==============================================================================
 # [3] MAIN EXECUTION
 # ==============================================================================
+import os
+
 if __name__ == "__main__":
-    # You can customize individual data requirements here (in Mbits)
-    # Example: GN1 needs 120Mb, GN2 needs 8Mb
-    req_gn1 = 40.0
-    req_gn2 = 80.0
+    req_list = [8.0, 24.0, 40.0, 80.0, 120.0, 160.0, 200.0] # (Mbits)
     
-    sandbox = VisualSandbox(req1_mbit=req_gn1, req2_mbit=req_gn2)
-    
-    filename_strategy_1 = f"strategy_1_t_shape_{int(req_gn1)}_{int(req_gn2)}.gif"
-    filename_strategy_2 = f"strategy_2_triangular_{int(req_gn1)}_{int(req_gn2)}.gif"
-    
-    sandbox.animate_strategy(1, filename_strategy_1)
-    sandbox.animate_strategy(2, filename_strategy_2)
-    
-    print(f"\nSUCCESS: Highlighted GIFs created:")
-    print(f"  - {filename_strategy_1}")
-    print(f"  - {filename_strategy_2}")
+    output_dir = "sandbox_gifs"
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+        print(f"Created directory: {output_dir}")
+
+    total_combinations = len(req_list) * len(req_list)
+    current_count = 0
+
+    print(f"Starting batch generation for {total_combinations} combinations (total {total_combinations * 2} GIF files)...")
+
+    for req_gn1 in req_list:
+        for req_gn2 in req_list:
+            current_count += 1
+            print(f"\n[{current_count}/{total_combinations}] Processing GN1: {int(req_gn1)}Mb, GN2: {int(req_gn2)}Mb ...")
+            
+            sandbox = VisualSandbox(req1_mbit=req_gn1, req2_mbit=req_gn2)
+            
+            filename_strategy_1 = os.path.join(output_dir, f"strategy_1_t_shape_{int(req_gn1)}_{int(req_gn2)}.gif")
+            filename_strategy_2 = os.path.join(output_dir, f"strategy_2_triangular_{int(req_gn1)}_{int(req_gn2)}.gif")
+            
+            sandbox.animate_strategy(1, filename_strategy_1)
+            sandbox.animate_strategy(2, filename_strategy_2)
+
+    print(f"\nSUCCESS: All {total_combinations * 2} GIF files successfully generated and saved to '{output_dir}' directory!")
