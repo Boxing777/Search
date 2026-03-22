@@ -4,7 +4,6 @@ import os
 from matplotlib.animation import FuncAnimation, PillowWriter
 from typing import Dict, Tuple, List
 
-
 # ==============================================================================
 # [1] CORE PHYSICS & MODELS
 # ==============================================================================
@@ -125,21 +124,50 @@ class VisualSandbox:
         fip_cands = [self.gn1 + self.R * np.array([np.cos(a), np.sin(a)]) for a in angles]
         fop_cands = [self.gn2 + self.R * np.array([np.cos(a), np.sin(a)]) for a in angles]
         
-        # Optimize leg for GN1 using its specific requirement
+        hover_rate1 = self.opt.calc_rate(self.gn1, self.gn1)
+        hover_rate2 = self.opt.calc_rate(self.gn2, self.gn2)
+        
+        # --- Optimize leg for GN1 ---
         best_t1, best_pts1 = float('inf'), None
         for fip in fip_cands:
-            t_in = np.linalg.norm(fip - self.sp)/20.0
-            oh = self.opt.find_v_shape(fip, p_flex, self.gn1, self.req1)
-            t_col = (np.linalg.norm(oh-fip) + np.linalg.norm(p_flex - oh))/20.0
+            t_in = np.linalg.norm(fip - self.sp) / self.opt.v_max
+            
+            c_max1 = self.opt._calc_data(fip, self.gn1, self.gn1) + self.opt._calc_data(self.gn1, p_flex, self.gn1)
+            
+            if self.req1 <= c_max1:
+                oh = self.opt.find_v_shape(fip, p_flex, self.gn1, self.req1)
+                t_collect_theo = (np.linalg.norm(oh - fip) + np.linalg.norm(p_flex - oh)) / self.opt.v_max
+            else:
+                oh = self.gn1
+                t_flight = (np.linalg.norm(fip - oh) + np.linalg.norm(p_flex - oh)) / self.opt.v_max
+                t_hover = (self.req1 - c_max1) / hover_rate1
+                t_collect_theo = t_flight + t_hover
+            
+            phy_dist = np.linalg.norm(oh - fip) + np.linalg.norm(p_flex - oh)
+            t_col = max(t_collect_theo, phy_dist / self.opt.v_max)
+            
             if t_in + t_col < best_t1:
                 best_t1, best_pts1 = t_in + t_col, (fip, oh)
         
-        # Optimize leg for GN2 using its specific requirement
+        # --- Optimize leg for GN2 ---
         best_t2, best_pts2 = float('inf'), None
         for fop in fop_cands:
-            oh = self.opt.find_v_shape(p_flex, fop, self.gn2, self.req2)
-            t_col = (np.linalg.norm(oh-p_flex) + np.linalg.norm(fop - oh))/20.0
-            t_out = np.linalg.norm(self.anchor - fop)/20.0
+            c_max2 = self.opt._calc_data(p_flex, self.gn2, self.gn2) + self.opt._calc_data(self.gn2, fop, self.gn2)
+            
+            if self.req2 <= c_max2:
+                oh = self.opt.find_v_shape(p_flex, fop, self.gn2, self.req2)
+                t_collect_theo = (np.linalg.norm(oh - p_flex) + np.linalg.norm(fop - oh)) / self.opt.v_max
+            else:
+                oh = self.gn2
+                t_flight = (np.linalg.norm(p_flex - oh) + np.linalg.norm(fop - oh)) / self.opt.v_max
+                t_hover = (self.req2 - c_max2) / hover_rate2
+                t_collect_theo = t_flight + t_hover
+                
+            phy_dist = np.linalg.norm(oh - p_flex) + np.linalg.norm(fop - oh)
+            t_col = max(t_collect_theo, phy_dist / self.opt.v_max)
+            
+            t_out = np.linalg.norm(self.anchor - fop) / self.opt.v_max
+            
             if t_col + t_out < best_t2:
                 best_t2, best_pts2 = t_col + t_out, (oh, fop)
                 
