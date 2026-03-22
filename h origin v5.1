@@ -1,0 +1,83 @@
+[33mtag v5.1[m
+Tagger: Boxing777 <ncku.boxing123@gmail.com>
+Date:   Sun Mar 22 20:29:00 2026 +0800
+
+bob_overlap 重疊區域處理，以及重疊區域測試檔
+
+[33mcommit b65e9cbf067434d8193db031868f036f3ad4798b[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;33mtag: [m[1;33mv5.1[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/bob_overlap[m[33m, [m[1;32mbob_overlap[m[33m)[m
+Author: Boxing777 <ncku.boxing123@gmail.com>
+Date:   Sun Mar 22 20:12:23 2026 +0800
+
+    0
+
+[1mdiff --git a/Minimizing Mission Time/test_overlap_visual.py b/Minimizing Mission Time/test_overlap_visual.py[m
+[1mindex 0526ff4..c082afa 100644[m
+[1m--- a/Minimizing Mission Time/test_overlap_visual.py[m	
+[1m+++ b/Minimizing Mission Time/test_overlap_visual.py[m	
+[36m@@ -4,7 +4,6 @@[m [mimport os[m
+ from matplotlib.animation import FuncAnimation, PillowWriter[m
+ from typing import Dict, Tuple, List[m
+ [m
+[31m-[m
+ # ==============================================================================[m
+ # [1] CORE PHYSICS & MODELS[m
+ # ==============================================================================[m
+[36m@@ -125,21 +124,50 @@[m [mclass VisualSandbox:[m
+         fip_cands = [self.gn1 + self.R * np.array([np.cos(a), np.sin(a)]) for a in angles][m
+         fop_cands = [self.gn2 + self.R * np.array([np.cos(a), np.sin(a)]) for a in angles][m
+         [m
+[31m-        # Optimize leg for GN1 using its specific requirement[m
+[32m+[m[32m        hover_rate1 = self.opt.calc_rate(self.gn1, self.gn1)[m
+[32m+[m[32m        hover_rate2 = self.opt.calc_rate(self.gn2, self.gn2)[m
+[32m+[m[41m        [m
+[32m+[m[32m        # --- Optimize leg for GN1 ---[m
+         best_t1, best_pts1 = float('inf'), None[m
+         for fip in fip_cands:[m
+[31m-            t_in = np.linalg.norm(fip - self.sp)/20.0[m
+[31m-            oh = self.opt.find_v_shape(fip, p_flex, self.gn1, self.req1)[m
+[31m-            t_col = (np.linalg.norm(oh-fip) + np.linalg.norm(p_flex - oh))/20.0[m
+[32m+[m[32m            t_in = np.linalg.norm(fip - self.sp) / self.opt.v_max[m
+[32m+[m[41m            [m
+[32m+[m[32m            c_max1 = self.opt._calc_data(fip, self.gn1, self.gn1) + self.opt._calc_data(self.gn1, p_flex, self.gn1)[m
+[32m+[m[41m            [m
+[32m+[m[32m            if self.req1 <= c_max1:[m
+[32m+[m[32m                oh = self.opt.find_v_shape(fip, p_flex, self.gn1, self.req1)[m
+[32m+[m[32m                t_collect_theo = (np.linalg.norm(oh - fip) + np.linalg.norm(p_flex - oh)) / self.opt.v_max[m
+[32m+[m[32m            else:[m
+[32m+[m[32m                oh = self.gn1[m
+[32m+[m[32m                t_flight = (np.linalg.norm(fip - oh) + np.linalg.norm(p_flex - oh)) / self.opt.v_max[m
+[32m+[m[32m                t_hover = (self.req1 - c_max1) / hover_rate1[m
+[32m+[m[32m                t_collect_theo = t_flight + t_hover[m
+[32m+[m[41m            [m
+[32m+[m[32m            phy_dist = np.linalg.norm(oh - fip) + np.linalg.norm(p_flex - oh)[m
+[32m+[m[32m            t_col = max(t_collect_theo, phy_dist / self.opt.v_max)[m
+[32m+[m[41m            [m
+             if t_in + t_col < best_t1:[m
+                 best_t1, best_pts1 = t_in + t_col, (fip, oh)[m
+         [m
+[31m-        # Optimize leg for GN2 using its specific requirement[m
+[32m+[m[32m        # --- Optimize leg for GN2 ---[m
+         best_t2, best_pts2 = float('inf'), None[m
+         for fop in fop_cands:[m
+[31m-            oh = self.opt.find_v_shape(p_flex, fop, self.gn2, self.req2)[m
+[31m-            t_col = (np.linalg.norm(oh-p_flex) + np.linalg.norm(fop - oh))/20.0[m
+[31m-            t_out = np.linalg.norm(self.anchor - fop)/20.0[m
+[32m+[m[32m            c_max2 = self.opt._calc_data(p_flex, self.gn2, self.gn2) + self.opt._calc_data(self.gn2, fop, self.gn2)[m
+[32m+[m[41m            [m
+[32m+[m[32m            if self.req2 <= c_max2:[m
+[32m+[m[32m                oh = self.opt.find_v_shape(p_flex, fop, self.gn2, self.req2)[m
+[32m+[m[32m                t_collect_theo = (np.linalg.norm(oh - p_flex) + np.linalg.norm(fop - oh)) / self.opt.v_max[m
+[32m+[m[32m            else:[m
+[32m+[m[32m                oh = self.gn2[m
+[32m+[m[32m                t_flight = (np.linalg.norm(p_flex - oh) + np.linalg.norm(fop - oh)) / self.opt.v_max[m
+[32m+[m[32m                t_hover = (self.req2 - c_max2) / hover_rate2[m
+[32m+[m[32m                t_collect_theo = t_flight + t_hover[m
+[32m+[m[41m                [m
+[32m+[m[32m            phy_dist = np.linalg.norm(oh - p_flex) + np.linalg.norm(fop - oh)[m
+[32m+[m[32m            t_col = max(t_collect_theo, phy_dist / self.opt.v_max)[m
+[32m+[m[41m            [m
+[32m+[m[32m            t_out = np.linalg.norm(self.anchor - fop) / self.opt.v_max[m
+[32m+[m[41m            [m
+             if t_col + t_out < best_t2:[m
+                 best_t2, best_pts2 = t_col + t_out, (oh, fop)[m
+                 [m
