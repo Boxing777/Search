@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas as pd
 import os
 from matplotlib.animation import FuncAnimation, PillowWriter
 from typing import Dict, Tuple, List
@@ -113,7 +114,7 @@ class VisualSandbox:
         self.gn1 = np.array([1000.0, 1000.0])
         self.gn2 = np.array([1000.0 + 1.25 * self.R, 1000.0])
         self.sp = np.array([600.0, 700.0])
-        self.anchor = np.array([1800.0, 700.0])
+        self.anchor = np.array([1000.0 + 1.25 * self.R + 400.0, 700.0])
         
         # Individual data requirements converted to bits
         self.req1 = req1_mbit * 1e6
@@ -267,6 +268,7 @@ class VisualSandbox:
         print(f"Generating: {filename}...")
         ani.save(filename, writer=PillowWriter(fps=2))
         plt.close(fig)
+        return global_min_t
 
 # ==============================================================================
 # [3] MAIN EXECUTION
@@ -274,7 +276,8 @@ class VisualSandbox:
 import os
 
 if __name__ == "__main__":
-    req_list = [8.0, 24.0, 40.0, 80.0, 120.0, 160.0, 200.0] # (Mbits)
+    req_list = [8.0, 24.0, 40.0, 80.0, 120.0, 160.0, 200.0] 
+    results_data = []
     
     output_dir = "sandbox_gifs"
     if not os.path.exists(output_dir):
@@ -296,7 +299,20 @@ if __name__ == "__main__":
             filename_strategy_1 = os.path.join(output_dir, f"strategy_1_t_shape_{int(req_gn1)}_{int(req_gn2)}.gif")
             filename_strategy_2 = os.path.join(output_dir, f"strategy_2_triangular_{int(req_gn1)}_{int(req_gn2)}.gif")
             
-            sandbox.animate_strategy(1, filename_strategy_1)
-            sandbox.animate_strategy(2, filename_strategy_2)
-
+            t1 = sandbox.animate_strategy(1, filename_strategy_1)
+            t2 = sandbox.animate_strategy(2, filename_strategy_2)
+            
+            results_data.append({
+                "GN1_Mbit": req_gn1,
+                "GN2_Mbit": req_gn2,
+                "Strategy_1_Time": round(t1, 2), 
+                "Strategy_2_Time": round(t2, 2),
+                "Improvement": round(t1 - t2, 2)
+            })
+            
     print(f"\nSUCCESS: All {total_combinations * 2} GIF files successfully generated and saved to '{output_dir}' directory!")
+    
+    df = pd.DataFrame(results_data)
+    print("\n--- Strategy Comparison Table ---")
+    print(df.to_string(index=False))
+    df.to_csv(os.path.join(output_dir, "comparison_results.csv"), index=False)

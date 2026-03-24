@@ -137,6 +137,7 @@ def plot_final_comparison_trajectories(gns: np.ndarray, data_center_pos: Tuple[f
             #             zorder=5)
             #     eo_label_added = True
 
+    '''
     for i, (uav_id, segments) in enumerate(bob_trajectories.items()):
         color = 'cyan' 
         ax.plot([], [], color=color, linestyle='-.', linewidth=2.0, label=f'{uav_id} BOB-V') # Label зям░ BOB-V
@@ -151,7 +152,7 @@ def plot_final_comparison_trajectories(gns: np.ndarray, data_center_pos: Tuple[f
             previous_pos = fop 
         
         ax.plot([previous_pos[0], data_center_pos[0]], [previous_pos[1], data_center_pos[1]], color=color, linestyle='-.', linewidth=1.5, zorder=2)
-    
+    '''
     
     for i, (uav_id, segments) in enumerate(bob_f_trajectories.items()):
         color = 'magenta' 
