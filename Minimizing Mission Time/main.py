@@ -16,12 +16,14 @@ import visualizer as vis
 import traceback
 import pandas as pd
 import reporter
+import multiprocessing
 import parameters as params
 
 from environment import SimulationEnvironment
 from mission_allocation_ga import MissionAllocationGA
 from trajectory_optimizer import TrajectoryOptimizer
 from convex_trajectory_planner import ConvexTrajectoryPlanner
+from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime
 from bob_planner import BOBPlanner
 from cmc_planner import CMCPlanner
@@ -393,12 +395,47 @@ def run_single_simulation(run_prefix: str, output_dir: str):
     print("\nSimulation finished successfully.")
     print("======================================================")
 
+
+def run_task(args):
+    """
+    Worker function to execute a single simulation run in parallel.
+    args: (index, directory, seed)
+    """
+    i, batch_run_dir, BATCH_SEED = args
+    run_prefix = f"run_{i+1}"
+    log_path = os.path.join(batch_run_dir, f"{run_prefix}_log.txt")
+    
+    # Preserve original output redirection logic
+    original_stdout = sys.stdout
+    logger = Logger(log_path)
+    sys.stdout = logger
+    
+    print(f"\n--- Starting {run_prefix.upper()} ---")
+    try:
+        run_seed = BATCH_SEED + i
+        # Set parameters for the local process
+        setattr(params, 'RANDOM_SEED', run_seed)
+        print(f"Using random seed: {run_seed}") 
+        run_single_simulation(run_prefix, batch_run_dir)
+    except Exception as e:
+        traceback.print_exc()
+    finally:
+        print(f"--- Finished {run_prefix.upper()} ---")
+        if isinstance(sys.stdout, Logger): 
+            sys.stdout.close()
+        sys.stdout = original_stdout
+    return f"Finished {run_prefix}"
+
+
+
 # --- Main Entry Point for Batch Execution (No changes from your version) ---
 if __name__ == "__main__":
     NUMBER_OF_RUNS = 200 # Set to 1 for testing the fix
     BASE_RESULTS_DIR = "simulation_results"
     
     BATCH_SEED = int(time.time()) # You can choose any integer you like. ex. import time; BATCH_SEED = int(time.time()).BATCH_SEED = 777
+    
+    MAX_WORKERS = 10
     
     if not os.path.exists(BASE_RESULTS_DIR):
         os.makedirs(BASE_RESULTS_DIR)
@@ -407,27 +444,18 @@ if __name__ == "__main__":
     batch_run_dir = os.path.join(BASE_RESULTS_DIR, f"run_{batch_timestamp}")
     os.makedirs(batch_run_dir)
     
+    
     print(f"Starting batch of {NUMBER_OF_RUNS} runs with Master Seed: {BATCH_SEED}.")
     print(f"All results will be saved in: {batch_run_dir}")
+    print(f"Parallel execution enabled with {MAX_WORKERS} workers.")
     
-    original_stdout = sys.stdout
+    tasks = [(i, batch_run_dir, BATCH_SEED) for i in range(NUMBER_OF_RUNS)]
     
-    for i in range(NUMBER_OF_RUNS):
-        run_prefix = f"run_{i+1}"
-        log_path = os.path.join(batch_run_dir, f"{run_prefix}_log.txt")
-        logger = Logger(log_path)
-        sys.stdout = logger
-        print(f"\n--- Starting {run_prefix.upper()} ---")
-        try:
-            run_seed = BATCH_SEED + i
-            setattr(params, 'RANDOM_SEED', run_seed)
-            print(f"Using random seed: {run_seed}") 
-            run_single_simulation(run_prefix, batch_run_dir)
-        except Exception as e:
-            traceback.print_exc()
-        finally:
-            if isinstance(sys.stdout, Logger): sys.stdout.close()
-            sys.stdout = original_stdout
-        print(f"--- Finished {run_prefix.upper()} ---")
+    # Execute the tasks in parallel
+    start_time_total = time.time()
+    with ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        # map() handles the distribution of runs across the 10 workers
+        results = list(executor.map(run_task, tasks))
 
-    print(f"\nAll runs completed. Check the '{batch_run_dir}' directory.")
+    print(f"\nAll runs completed. Execution Time: {time.time() - start_time_total:.2f}s")
+    print(f"Check the '{batch_run_dir}' directory.")
