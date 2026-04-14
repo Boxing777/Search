@@ -50,7 +50,7 @@ def generate_gns(num_gns: int, area_width: float, area_height: float,
         raise ValueError("Margin is too large for the area dimensions.")
 
     # Rule: Distance between any two nodes must be >= 0.7 * D
-    min_inter_node_dist = 1.1 * margin
+    min_inter_node_dist = 0.5 * margin
 
     for _ in range(max_attempts):
         if len(gn_positions) >= num_gns:
