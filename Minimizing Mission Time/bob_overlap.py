@@ -400,3 +400,4 @@ class BOBOverlapPlanner:
             "total_time": total_mission_time,
             "total_length": total_path_length
         }
+        
