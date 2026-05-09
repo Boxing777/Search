@@ -249,10 +249,16 @@ class BOBOverlapPlanner:
                             gn_idx = group[l - 2]
                             gn_coord = self.all_gns[gn_idx]
                             
+                            dist_prev = np.linalg.norm(p_prev - gn_coord)
+                            dist_curr = np.linalg.norm(p_curr - gn_coord)
+                            
+                            use_elliptical_solver = not (np.isclose(dist_prev, self.comm_radius, atol=1e-2) and 
+                                                         np.isclose(dist_curr, self.comm_radius, atol=1e-2))
+                            
                             c_max = self.traj_optimizer.calculate_fm_max_capacity(p_prev, p_curr, gn_coord)
                             if required_data_per_gn <= c_max:
                                 opt_oh, t_col_theo = self.traj_optimizer.find_optimal_fm_trajectory(
-                                    p_prev, p_curr, gn_coord, required_data_per_gn, is_overlapping=True)
+                                    p_prev, p_curr, gn_coord, required_data_per_gn, is_overlapping=use_elliptical_solver)
                             else:
                                 opt_oh = gn_coord
                                 t_flight = (np.linalg.norm(p_prev - opt_oh) + np.linalg.norm(p_curr - opt_oh)) / self.uav_speed
