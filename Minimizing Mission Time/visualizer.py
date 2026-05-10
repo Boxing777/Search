@@ -88,6 +88,7 @@ def plot_final_comparison_trajectories(gns: np.ndarray, data_center_pos: Tuple[f
                                        convex_trajectories: Dict[str, np.ndarray],
                                        bob_trajectories: Dict[str, List[Dict]],
                                        bob_f_trajectories: Dict[str, List[Dict]], 
+                                       bob_f_center_trajectories: Dict[str, List[Dict]],
                                        cmc_plot_points: Dict[str, Dict],
                                        area_width: float, area_height: float, comm_radius: float,
                                        save_path: str = None, title: str = "Final Optimized Trajectories Comparison"):
@@ -171,6 +172,27 @@ def plot_final_comparison_trajectories(gns: np.ndarray, data_center_pos: Tuple[f
             previous_pos = fop 
         
         ax.plot([previous_pos[0], data_center_pos[0]], [previous_pos[1], data_center_pos[1]], color=color, linestyle='--', linewidth=1.5, zorder=2)
+    
+    for i, (uav_id, segments) in enumerate(bob_f_center_trajectories.items()):
+        color = 'green' 
+        ax.plot([], [], color=color, linestyle='-.', linewidth=2.0, label=f'{uav_id} BOB-F (Center)')
+
+        if not segments: continue
+        previous_pos = data_center_pos
+        for segment in segments:
+            fip, oh, fop = np.array(segment['fip']), np.array(segment['oh']), np.array(segment['fop'])
+            
+            
+            if np.linalg.norm(fip - previous_pos) > 1e-6:
+                ax.plot([previous_pos[0], fip[0]], [previous_pos[1], fip[1]], color=color, linestyle='-.', linewidth=1.5, zorder=2)
+            
+            
+            v_path = np.array([fip, oh, fop])
+            ax.plot(v_path[:, 0], v_path[:, 1], color=color, linestyle='-.', linewidth=1.5, marker='.', markersize=4, zorder=2)
+            previous_pos = fop 
+        
+        
+        ax.plot([previous_pos[0], data_center_pos[0]], [previous_pos[1], data_center_pos[1]], color=color, linestyle='-.', linewidth=1.5, zorder=2)
 
     fip_cmc_label_added = False
     # fop_cmc_label_added = False

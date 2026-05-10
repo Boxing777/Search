@@ -189,7 +189,7 @@ class BOBOverlapPlanner:
                 global_anchor = self.data_center_pos
             else:
                 next_group_first_gn = groups[group_idx + 1][0]
-                # global_anchor = self.all_gns[next_group_first_gn] # next node center for anchor
+                #global_anchor = self.all_gns[next_group_first_gn] # next node center for anchor
                 global_anchor = fip_cmc_anchors.get(next_group_first_gn, self.all_gns[next_group_first_gn]) # ideal_entry_point for anchor
 
             # Construct Layered Graph
