@@ -29,6 +29,7 @@ from bob_planner import BOBPlanner
 from cmc_planner import CMCPlanner
 from bob_overlap import BOBOverlapPlanner 
 
+
 # --- Helper Class and Functions (No changes needed here) ---
 class Logger:
     """A simple logger to write output to both console and a file."""
@@ -103,7 +104,7 @@ def run_single_simulation(run_prefix: str, output_dir: str):
     
     print(f"Environment created: {params.AREA_WIDTH}x{params.AREA_HEIGHT}m area with {params.NUM_GNS} GNs.")
 
-    required_data_per_gn =  64* 1e6 # Set to a high value to see V-shapes data size
+    required_data_per_gn =  32* 1e6 # Set to a high value to see V-shapes data size
     print(f"Data requirement per GN set to {required_data_per_gn / 1e6:.0f} Mbits.")
     
     print("\n[Step 2/5] Running Mission Allocation (Genetic Algorithm)...")
