@@ -108,9 +108,9 @@ def plot_final_comparison_trajectories(gns: np.ndarray, data_center_pos: Tuple[f
                 fip, oh, fop = np.array(segment['fip']), np.array(segment['oh']), np.array(segment['fop'])
                 v_path = np.array([fip, oh, fop])
                 ax.plot(v_path[:, 0], v_path[:, 1], color=color, linestyle='-', linewidth=1.5, marker='.', markersize=4, zorder=2)
-                ax.text(oh[0] + 50, oh[1] + 50, str(sequence_counter), color='white', 
-                        fontsize=10, fontweight='bold', ha='center', va='center',
-                        bbox=dict(facecolor=color, alpha=0.8, boxstyle='circle,pad=0.2'))
+            #    ax.text(oh[0] + 50, oh[1] + 50, str(sequence_counter), color='white', 
+            #            fontsize=10, fontweight='bold', ha='center', va='center',
+            #            bbox=dict(facecolor=color, alpha=0.8, boxstyle='circle,pad=0.2'))
                 if segment.get('mode') == 'HM':
                     ax.plot(oh[0], oh[1], 'o', color=color, markersize=8, markeredgecolor='black')
                 sequence_counter += 1
@@ -173,55 +173,55 @@ def plot_final_comparison_trajectories(gns: np.ndarray, data_center_pos: Tuple[f
         
         ax.plot([previous_pos[0], data_center_pos[0]], [previous_pos[1], data_center_pos[1]], color=color, linestyle='--', linewidth=1.5, zorder=2)
     
-    for i, (uav_id, segments) in enumerate(bob_f_center_trajectories.items()):
-        color = 'green' 
-        ax.plot([], [], color=color, linestyle='-.', linewidth=2.0, label=f'{uav_id} BOB-F (Center)')
+#    for i, (uav_id, segments) in enumerate(bob_f_center_trajectories.items()):
+#        color = 'green' 
+#        ax.plot([], [], color=color, linestyle='-.', linewidth=2.0, label=f'{uav_id} BOB-F (Center)')
+#
+#        if not segments: continue
+#        previous_pos = data_center_pos
+#        for segment in segments:
+#            fip, oh, fop = np.array(segment['fip']), np.array(segment['oh']), np.array(segment['fop'])
+#            
+#            
+#            if np.linalg.norm(fip - previous_pos) > 1e-6:
+#                ax.plot([previous_pos[0], fip[0]], [previous_pos[1], fip[1]], color=color, linestyle='-.', linewidth=1.5, zorder=2)
+#            
+#            
+#            v_path = np.array([fip, oh, fop])
+#            ax.plot(v_path[:, 0], v_path[:, 1], color=color, linestyle='-.', linewidth=1.5, marker='.', markersize=4, zorder=2)
+#            previous_pos = fop 
+#        
+#        
+#        ax.plot([previous_pos[0], data_center_pos[0]], [previous_pos[1], data_center_pos[1]], color=color, linestyle='-.', linewidth=1.5, zorder=2)
 
-        if not segments: continue
-        previous_pos = data_center_pos
-        for segment in segments:
-            fip, oh, fop = np.array(segment['fip']), np.array(segment['oh']), np.array(segment['fop'])
-            
-            
-            if np.linalg.norm(fip - previous_pos) > 1e-6:
-                ax.plot([previous_pos[0], fip[0]], [previous_pos[1], fip[1]], color=color, linestyle='-.', linewidth=1.5, zorder=2)
-            
-            
-            v_path = np.array([fip, oh, fop])
-            ax.plot(v_path[:, 0], v_path[:, 1], color=color, linestyle='-.', linewidth=1.5, marker='.', markersize=4, zorder=2)
-            previous_pos = fop 
-        
-        
-        ax.plot([previous_pos[0], data_center_pos[0]], [previous_pos[1], data_center_pos[1]], color=color, linestyle='-.', linewidth=1.5, zorder=2)
-
-    fip_cmc_label_added = False
+#    fip_cmc_label_added = False
     # fop_cmc_label_added = False
 
-    for uav_id, points_list in cmc_plot_points.items():
-        for point_info in points_list:
-            gn_idx = point_info['gn_index']
-            fip = point_info['fip']
-            # fop = point_info['fop']
-            
-            # Plot the FIP (triangle)
-            ax.plot(fip[0], fip[1], marker='^', color='darkblue', markersize=12,
-                    fillstyle='none', markeredgewidth=2,
-                    label='CMC FIP' if not fip_cmc_label_added else "", 
-                    linestyle='None', zorder=6)
-            
-            ax.text(fip[0] + 20, fip[1] + 20, str(gn_idx), color='darkblue', 
-                    fontsize=10, fontweight='bold', ha='left', va='bottom')
-            fip_cmc_label_added = True
-
-            # Plot the FOP (square)
-            # ax.plot(fop[0], fop[1], marker='s', color='darkorange', markersize=10,
-            #         fillstyle='none', markeredgewidth=2,
-            #         label='CMC FOP' if not fop_cmc_label_added else "",
-            #         linestyle='None', zorder=6)
-
-            # ax.text(fop[0] + 20, fop[1] + 20, str(gn_idx), color='darkorange',
-            #         fontsize=10, fontweight='bold', ha='left', va='bottom')
-            # fop_cmc_label_added = True
+#    for uav_id, points_list in cmc_plot_points.items():
+#        for point_info in points_list:
+#            gn_idx = point_info['gn_index']
+#            fip = point_info['fip']
+#            # fop = point_info['fop']
+#            
+#            # Plot the FIP (triangle)
+#            ax.plot(fip[0], fip[1], marker='^', color='darkblue', markersize=12,
+#                    fillstyle='none', markeredgewidth=2,
+#                    label='CMC FIP' if not fip_cmc_label_added else "", 
+#                    linestyle='None', zorder=6)
+#            
+#            ax.text(fip[0] + 20, fip[1] + 20, str(gn_idx), color='darkblue', 
+#                    fontsize=10, fontweight='bold', ha='left', va='bottom')
+#            fip_cmc_label_added = True
+#
+#            # Plot the FOP (square)
+#            # ax.plot(fop[0], fop[1], marker='s', color='darkorange', markersize=10,
+#            #         fillstyle='none', markeredgewidth=2,
+#            #         label='CMC FOP' if not fop_cmc_label_added else "",
+#            #         linestyle='None', zorder=6)
+#
+#            # ax.text(fop[0] + 20, fop[1] + 20, str(gn_idx), color='darkorange',
+#            #         fontsize=10, fontweight='bold', ha='left', va='bottom')
+#            # fop_cmc_label_added = True
     
     handles, labels = ax.get_legend_handles_labels()
     by_label = dict(zip(labels, handles))
