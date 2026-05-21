@@ -108,9 +108,9 @@ def plot_final_comparison_trajectories(gns: np.ndarray, data_center_pos: Tuple[f
                 fip, oh, fop = np.array(segment['fip']), np.array(segment['oh']), np.array(segment['fop'])
                 v_path = np.array([fip, oh, fop])
                 ax.plot(v_path[:, 0], v_path[:, 1], color=color, linestyle='-', linewidth=1.5, marker='.', markersize=4, zorder=2)
-            #    ax.text(oh[0] + 50, oh[1] + 50, str(sequence_counter), color='white', 
-            #            fontsize=10, fontweight='bold', ha='center', va='center',
-            #            bbox=dict(facecolor=color, alpha=0.8, boxstyle='circle,pad=0.2'))
+#                ax.text(oh[0] + 50, oh[1] + 50, str(sequence_counter), color='white', 
+#                        fontsize=10, fontweight='bold', ha='center', va='center',
+#                        bbox=dict(facecolor=color, alpha=0.8, boxstyle='circle,pad=0.2'))
                 if segment.get('mode') == 'HM':
                     ax.plot(oh[0], oh[1], 'o', color=color, markersize=8, markeredgecolor='black')
                 sequence_counter += 1
