@@ -163,28 +163,36 @@ def calculate_flight_power(velocity_ms: float, params: Dict) -> float:
 # Implements functions used by optimization algorithms to evaluate solutions.
 # ==============================================================================
 
+# <<< START OF MODIFIED HEURISTIC COST FUNCTION >>>
 def calculate_initial_mission_cost(gn_coord_prev: np.ndarray, gn_coord_curr: np.ndarray,
                                      transmission_radius_d: float, a: float, b: float) -> float:
     """
-    Calculates the initial weighted mission cost for a UAV path segment (Equation 9).
-
-    This simplified metric is used for the initial mission allocation by the GA.
-
-    Args:
-        gn_coord_prev (np.ndarray): The 2D coordinates of the previous GN (or data center).
-        gn_coord_curr (np.ndarray): The 2D coordinates of the current GN.
-        transmission_radius_d (float): The max communication radius (D) in meters.
-        a (float): The scaling factor for the flight mission (SCALING_FACTOR_A).
-        b (float): The scaling factor for the collection mission (SCALING_FACTOR_B).
-
-    Returns:
-        float: The dimensionless mission cost (??_ij) for this path segment.
+    Calculates the initial weighted mission cost for a UAV path segment.
+    (Heuristically Modified to favor overlapping nodes and boundary distances)
+    
+    This helps the Genetic Algorithm output a sequence that better matches
+    the physical realities of V-shaped flight paths and overlapping zones.
     """
     distance = np.linalg.norm(gn_coord_curr - gn_coord_prev)
 
     if distance > 2 * transmission_radius_d:
-        cost = a * (distance - 2 * transmission_radius_d) + 2 * b * transmission_radius_d
+        # Non-overlapping: The UAV must fly the gap between the two communication circles.
+        # The flying distance is roughly (distance - 2D).
+        # The collection effort (flying across the diameter) is roughly proportional to 2D.
+        gap_distance = distance - 2 * transmission_radius_d
+        cost = a * gap_distance + b * (2 * transmission_radius_d)
     else:
-        cost = b * distance
+        # Overlapping: The UAV can directly transition from one circle to another.
+        # There is no "gap" to fly across. 
+        # We apply a strong discount based on how deep the overlap is.
+        overlap_depth = 2 * transmission_radius_d - distance
+        base_collection_cost = b * distance 
+        
+        # Discount factor: 1.0 when touching, approaching 0 when fully overlapping
+        discount_factor = 1.0 - (overlap_depth / (2 * transmission_radius_d))
+        
+        # Add a tiny epsilon to prevent 0 cost, ensuring GA functions normally
+        cost = base_collection_cost * discount_factor + 0.1 
 
     return cost
+# <<< END OF MODIFIED HEURISTIC COST FUNCTION >>>

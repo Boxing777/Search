@@ -35,7 +35,8 @@ def parse_log_file(file_path):
         'Convex': 'Convex', 
         'CMC': 'CMC', 
         'BOB-V': 'BOB_V',   # Changed from 'BOB' to 'BOB-V' to match main.py
-        'BOB-F': 'BOB_F'    # Added new method
+        'BOB-F': 'BOB_F',    # Added new method
+        'BOB-F_Center': 'BOB_F_Center'
     }
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
@@ -77,7 +78,7 @@ def analyze_batch_results(batch_dir):
     print("="*63 + "\n")
     
     # <<< MODIFIED: Methods list now includes BOB_V and BOB_F >>>
-    methods = ['V_Shaped', 'Convex', 'CMC', 'BOB_V', 'BOB_F']
+    methods = ['V_Shaped', 'Convex', 'CMC', 'BOB_V', 'BOB_F', 'BOB_F_Center']
     
     # ---------------------------------------------------------
     # 1. Boxplots (Time & Length)
@@ -134,7 +135,7 @@ def analyze_batch_results(batch_dir):
     # 2. Improvement Barplots
     # ---------------------------------------------------------
     baseline_method = 'Convex'
-    comparison_methods = ['V_Shaped', 'CMC', 'BOB_V', 'BOB_F']
+    comparison_methods = ['V_Shaped', 'CMC', 'BOB_V', 'BOB_F', 'BOB_F_Center']
     
     # --- Local Averages ---
     avg_improvements = {}
@@ -237,6 +238,8 @@ def analyze_batch_results(batch_dir):
     
     # Generate Chart 2: BOB-F vs V-Shaped (New)
     generate_h2h_pie_chart(df, 'BOB_F', 'V_Shaped', 'BOB-F', 'V-Shaped', 'summary_bob_f_vs_vshaped_pie.png')
+    
+    generate_h2h_pie_chart(df, 'BOB_F', 'BOB_F_Center', 'BOB-F (Anchor)', 'BOB-F (Center)', 'summary_bob_f_anchor_vs_center_pie.png')
 
     print("\nVisualizations generation complete.")
 

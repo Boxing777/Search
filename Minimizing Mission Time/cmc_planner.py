@@ -194,10 +194,25 @@ class CMCPlanner:
                 # Special Case: Single point inside (Touching boundary or just one point)
                 # This contributes 0 collection but marks availability. 
                 # Usually redundant if we handle segments, but kept for logic safety.
-                elif len(unique_points) == 1 and p1_inside and p2_inside:
-                     # Entire tiny segment is inside
-                     events.append({'progress': current_path_dist, 'point': p1, 'type': 'ENTER', 'gn_index': gn_index})
-                     events.append({'progress': current_path_dist + segment_len, 'point': p2, 'type': 'EXIT', 'gn_index': gn_index})
+                elif len(unique_points) == 1:
+                    # Case B: Grazing contact (Tangent) or single-point boundary contact.
+                    # This segment has 0 length inside the circle but represents a valid 
+                    # instant-touch opportunity. We register both ENTER and EXIT at the same point.
+                    touch_pt = unique_points[0]
+                    prog_touch = current_path_dist + np.linalg.norm(touch_pt - p1)
+                    
+                    events.append({
+                        'progress': prog_touch, 
+                        'point': touch_pt, 
+                        'type': 'ENTER', 
+                        'gn_index': gn_index
+                    })
+                    events.append({
+                        'progress': prog_touch, 
+                        'point': touch_pt, 
+                        'type': 'EXIT', 
+                        'gn_index': gn_index
+                    })
 
             current_path_dist += segment_len
         
@@ -264,22 +279,47 @@ class CMCPlanner:
             
             segments_for_gn = collection_periods[gn_index]
             
+            final_fip = None
+            final_fop = None
+            
             if segments_for_gn:
-                # Visualization points
+                # Normal Case: Valid service segments exist
                 final_fip = segments_for_gn[0][0]
                 final_fop = segments_for_gn[-1][1]
-                cmc_points_for_plot.append({
-                    "gn_index": gn_index,
-                    "fip": final_fip,
-                    "fop": final_fop
-                })
-
+                
                 for seg_start, seg_end in segments_for_gn:
                      dist = np.linalg.norm(seg_end - seg_start)
                      if dist > 1e-6:
                         data_collected_on_segment += self.traj_optimizer._calculate_collected_data(
                             seg_start, seg_end, gn_coord
                         )
+            else:
+                # Extreme Edge Case (Completely Missed): Find the closest point on the entire path
+                min_dist_to_path = float('inf')
+                closest_p_on_path = None
+                
+                for i in range(len(shortest_path) - 1):
+                    p_candidate = self._get_closest_point_on_segment(shortest_path[i], shortest_path[i+1], gn_coord)
+                    dist_to_gn = np.linalg.norm(p_candidate - gn_coord)
+                    
+                    if dist_to_gn < min_dist_to_path:
+                        min_dist_to_path = dist_to_gn
+                        closest_p_on_path = p_candidate
+                
+                # If the closest point is within communication range, set it as BOTH FIP and FOP
+                if min_dist_to_path <= comm_radius + self.TOLERANCE:
+                    final_fip = closest_p_on_path
+                    final_fop = closest_p_on_path
+                    # Append it to segments_for_gn so the hover calculation below can use it
+                    segments_for_gn.append((closest_p_on_path, closest_p_on_path))
+            
+            # Export the determined points if they exist
+            if final_fip is not None and final_fop is not None:
+                cmc_points_for_plot.append({
+                    "gn_index": gn_index,
+                    "fip": final_fip,
+                    "fop": final_fop
+                })
             
             hover_time_for_gn = 0
             data_shortfall = required_data_per_gn - data_collected_on_segment

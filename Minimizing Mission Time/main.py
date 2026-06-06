@@ -16,16 +16,20 @@ import visualizer as vis
 import traceback
 import pandas as pd
 import reporter
+import multiprocessing
 import parameters as params
 
 from environment import SimulationEnvironment
 from mission_allocation_ga import MissionAllocationGA
 from trajectory_optimizer import TrajectoryOptimizer
 from convex_trajectory_planner import ConvexTrajectoryPlanner
+from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime
 from bob_planner import BOBPlanner
 from cmc_planner import CMCPlanner
 from bob_overlap import BOBOverlapPlanner 
+from bob_overlap_center import BOBOverlapPlanner as BOBOverlapCenterPlanner
+
 
 # --- Helper Class and Functions (No changes needed here) ---
 class Logger:
@@ -101,7 +105,7 @@ def run_single_simulation(run_prefix: str, output_dir: str):
     
     print(f"Environment created: {params.AREA_WIDTH}x{params.AREA_HEIGHT}m area with {params.NUM_GNS} GNs.")
 
-    required_data_per_gn = 40 * 1e6 # Set to a high value to see V-shapes data size
+    required_data_per_gn =  16 * 1e6 # Set to a high value to see V-shapes data size
     print(f"Data requirement per GN set to {required_data_per_gn / 1e6:.0f} Mbits.")
     
     print("\n[Step 2/5] Running Mission Allocation (Genetic Algorithm)...")
@@ -135,6 +139,13 @@ def run_single_simulation(run_prefix: str, output_dir: str):
         traj_optimizer=traj_optimizer,
         convex_planner=convex_planner
     )
+    
+    bob_overlap_center_planner = BOBOverlapCenterPlanner(
+        gns=sim_env.gn_positions,
+        data_center_pos=sim_env.data_center_pos,
+        traj_optimizer=traj_optimizer,
+        convex_planner=convex_planner
+    )
 
     cmc_planner = CMCPlanner(
         traj_optimizer=traj_optimizer,
@@ -151,6 +162,9 @@ def run_single_simulation(run_prefix: str, output_dir: str):
 
     bob_f_trajectories, bob_f_path_lengths = {}, {}
     bob_f_mission_times = {}
+    
+    bob_f_center_trajectories, bob_f_center_path_lengths = {}, {}
+    bob_f_center_mission_times = {}
     
     cmc_mission_times = {}
     cmc_plot_points = {}
@@ -327,6 +341,15 @@ def run_single_simulation(run_prefix: str, output_dir: str):
         
         print(f"     BOB-F Mission Time: {bob_f_result['total_time']:.2f}s | Path Length: {bob_f_result['total_length']:.2f}m")
         
+        
+        print("\n  -> Running BOB-F_center Planner for the same sequence...")
+        bob_f_center_result = bob_overlap_center_planner.plan_path(gn_indices_route, required_data_per_gn)
+        
+        bob_f_center_mission_times[uav_id] = bob_f_center_result['total_time']
+        bob_f_center_path_lengths[uav_id] = bob_f_center_result['total_length']
+        bob_f_center_trajectories[uav_id] = bob_f_center_result['segments']
+        
+        print(f"     BOB-F_center Mission Time: {bob_f_center_result['total_time']:.2f}s | Path Length: {bob_f_center_result['total_length']:.2f}m")
 
         print("\n  -> Running CMC Planner for the same sequence...")
         
@@ -359,6 +382,7 @@ def run_single_simulation(run_prefix: str, output_dir: str):
     system_mct_convex = max(convex_mission_times.values()) if convex_mission_times else 0
     system_mct_bob = max(bob_mission_times.values()) if bob_mission_times else 0
     system_mct_bob_f = max(bob_f_mission_times.values()) if bob_f_mission_times else 0 
+    system_mct_bob_f_center = max(bob_f_center_mission_times.values()) if bob_f_center_mission_times else 0
     system_mct_cmc = max(cmc_mission_times.values()) if cmc_mission_times else 0
     total_execution_time = time.time() - start_time
     
@@ -371,12 +395,14 @@ def run_single_simulation(run_prefix: str, output_dir: str):
             print(f"  CMC Mission Time:      {cmc_mission_times.get(uav_id, 0):.2f}s | Path Length: {convex_path_lengths.get(uav_id, 0):.2f}m")
             print(f"  BOB-V Mission Time:    {bob_mission_times.get(uav_id, 0):.2f}s | Path Length: {bob_path_lengths.get(uav_id, 0):.2f}m")
             print(f"  BOB-F Mission Time:    {bob_f_mission_times.get(uav_id, 0):.2f}s | Path Length: {bob_f_path_lengths.get(uav_id, 0):.2f}m") # <<< [NEW]
+            print(f"  BOB-F_Center Mission Time: {bob_f_center_mission_times.get(uav_id, 0):.2f}s | Path Length: {bob_f_center_path_lengths.get(uav_id, 0):.2f}m")
     
     print(f"\nSystem Mission Completion Time (MCT) for V-Shaped: {system_mct_v_shaped:.2f}s")
     print(f"System Mission Completion Time (MCT) for Convex:   {system_mct_convex:.2f}s")
     print(f"System Mission Completion Time (MCT) for CMC:      {system_mct_cmc:.2f}s")
     print(f"System Mission Completion Time (MCT) for BOB-V:    {system_mct_bob:.2f}s")
     print(f"System Mission Completion Time (MCT) for BOB-F:    {system_mct_bob_f:.2f}s") # <<< [NEW]
+    print(f"System Mission Completion Time (MCT) for BOB-F_Center: {system_mct_bob_f_center:.2f}s")
     print(f"Total script execution time: {total_execution_time:.2f}s")
     
     print("\n[Step 5/5] Visualizing final combined trajectories...")
@@ -385,6 +411,7 @@ def run_single_simulation(run_prefix: str, output_dir: str):
         v_shaped_trajectories=final_trajectories, convex_trajectories=convex_trajectories,
         bob_trajectories=bob_trajectories, 
         bob_f_trajectories=bob_f_trajectories,
+        bob_f_center_trajectories=bob_f_center_trajectories,
         cmc_plot_points=cmc_plot_points, area_width=params.AREA_WIDTH, 
         area_height=params.AREA_HEIGHT,comm_radius=traj_optimizer.comm_radius_d,
         save_path=os.path.join(output_dir, f'{run_prefix}_final_trajectories.png')
@@ -393,11 +420,47 @@ def run_single_simulation(run_prefix: str, output_dir: str):
     print("\nSimulation finished successfully.")
     print("======================================================")
 
+
+def run_task(args):
+    """
+    Worker function to execute a single simulation run in parallel.
+    args: (index, directory, seed)
+    """
+    i, batch_run_dir, BATCH_SEED = args
+    run_prefix = f"run_{i+1}"
+    log_path = os.path.join(batch_run_dir, f"{run_prefix}_log.txt")
+    
+    # Preserve original output redirection logic
+    original_stdout = sys.stdout
+    logger = Logger(log_path)
+    sys.stdout = logger
+    
+    print(f"\n--- Starting {run_prefix.upper()} ---")
+    try:
+        run_seed = BATCH_SEED + i
+        # Set parameters for the local process
+        setattr(params, 'RANDOM_SEED', run_seed)
+        print(f"Using random seed: {run_seed}") 
+        run_single_simulation(run_prefix, batch_run_dir)
+    except Exception as e:
+        traceback.print_exc()
+    finally:
+        print(f"--- Finished {run_prefix.upper()} ---")
+        if isinstance(sys.stdout, Logger): 
+            sys.stdout.close()
+        sys.stdout = original_stdout
+    return f"Finished {run_prefix}"
+
+
+
 # --- Main Entry Point for Batch Execution (No changes from your version) ---
 if __name__ == "__main__":
     NUMBER_OF_RUNS = 200 # Set to 1 for testing the fix
     BASE_RESULTS_DIR = "simulation_results"
-    BATCH_SEED = 777 # You can choose any integer you like.
+    
+    BATCH_SEED = int(time.time()) # You can choose any integer you like. ex. import time; BATCH_SEED = int(time.time()).BATCH_SEED = 777
+    
+    MAX_WORKERS = 10
     
     if not os.path.exists(BASE_RESULTS_DIR):
         os.makedirs(BASE_RESULTS_DIR)
@@ -406,27 +469,19 @@ if __name__ == "__main__":
     batch_run_dir = os.path.join(BASE_RESULTS_DIR, f"run_{batch_timestamp}")
     os.makedirs(batch_run_dir)
     
+    
     print(f"Starting batch of {NUMBER_OF_RUNS} runs with Master Seed: {BATCH_SEED}.")
     print(f"All results will be saved in: {batch_run_dir}")
+    print(f"Parallel execution enabled with {MAX_WORKERS} workers.")
     
-    original_stdout = sys.stdout
+    tasks = [(i, batch_run_dir, BATCH_SEED) for i in range(NUMBER_OF_RUNS)]
     
-    for i in range(NUMBER_OF_RUNS):
-        run_prefix = f"run_{i+1}"
-        log_path = os.path.join(batch_run_dir, f"{run_prefix}_log.txt")
-        logger = Logger(log_path)
-        sys.stdout = logger
-        print(f"\n--- Starting {run_prefix.upper()} ---")
-        try:
-            run_seed = BATCH_SEED + i
-            setattr(params, 'RANDOM_SEED', run_seed)
-            print(f"Using random seed: {run_seed}") 
-            run_single_simulation(run_prefix, batch_run_dir)
-        except Exception as e:
-            traceback.print_exc()
-        finally:
-            if isinstance(sys.stdout, Logger): sys.stdout.close()
-            sys.stdout = original_stdout
-        print(f"--- Finished {run_prefix.upper()} ---")
+    # Execute the tasks in parallel
+    start_time_total = time.time()
+    with ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        # map() handles the distribution of runs across the 10 workers
+        results = list(executor.map(run_task, tasks))
 
-    print(f"\nAll runs completed. Check the '{batch_run_dir}' directory.")
+    print(f"\nAll runs completed. Execution Time: {time.time() - start_time_total:.2f}s")
+    print(f"Check the '{batch_run_dir}' directory.")
+    
