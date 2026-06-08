@@ -1,0 +1,67 @@
+
+Analyzing log files in: 'C:\Users\Boxing\Desktop\Boxing\VS_Python\Search\Minimizing Mission Time\simulation_results\run_2026-05-27_23-01-55'
+
+==================== STATISTICAL SUMMARY ====================
+       BOB_F_Time  BOB_F_Length  V_Shaped_Time  V_Shaped_Length  Convex_Time  Convex_Length  CMC_Time  CMC_Length  BOB_V_Time  BOB_V_Length  BOB_F_Center_Time  BOB_F_Center_Length
+count      200.00        200.00         200.00           200.00       200.00         200.00    200.00      200.00      200.00        200.00             200.00               200.00
+mean       309.98      6,191.67         345.01         6,894.67       396.95       4,975.55    357.09    4,975.55      348.84      6,970.32             309.55             6,183.52
+std         33.14        662.49          31.42           628.47        35.73         614.23     33.60      614.23       30.26        605.42              33.19               663.79
+min        232.02      4,637.23         267.87         5,347.53       303.84       3,270.01    279.63    3,270.01      268.33      5,334.48             231.89             4,634.56
+25%        289.40      5,780.09         323.22         6,460.88       373.21       4,569.90    335.34    4,569.90      327.68      6,548.91             289.20             5,780.52
+50%        307.97      6,151.49         343.49         6,865.30       391.86       4,919.79    353.58    4,919.79      349.79      6,981.04             307.03             6,131.20
+75%        330.32      6,598.62         364.66         7,286.98       420.66       5,337.06    377.50    5,337.06      369.03      7,377.26             330.41             6,603.35
+max        399.87      7,991.95         438.64         8,772.82       508.25       6,644.71    456.59    6,644.71      445.48      8,903.41             399.92             7,991.13
+===============================================================
+
+Saved enhanced MCT boxplot to: 'C:\Users\Boxing\Desktop\Boxing\VS_Python\Search\Minimizing Mission Time\simulation_results\run_2026-05-27_23-01-55\summary_mct_boxplot.png'
+Saved enhanced Path Length boxplot to: 'C:\Users\Boxing\Desktop\Boxing\VS_Python\Search\Minimizing Mission Time\simulation_results\run_2026-05-27_23-01-55\summary_length_boxplot.png'
+Saved Improvement bar plot to: 'C:\Users\Boxing\Desktop\Boxing\VS_Python\Search\Minimizing Mission Time\simulation_results\run_2026-05-27_23-01-55\summary_improvement_barplot.png'
+
+==================== GLOBAL AVERAGE COMPARISON ====================
+Global Average Time for Convex: 396.95s
+V-Shaped Average: 345.01s -> Improvement: 13.08%
+CMC Average: 357.09s -> Improvement: 10.04%
+BOB-V Average: 348.84s -> Improvement: 12.12%
+BOB-F Average: 309.98s -> Improvement: 21.91%
+BOB-F-Center Average: 309.55s -> Improvement: 22.02%
+Saved Improvement (Global Averages) bar plot to: 'C:\Users\Boxing\Desktop\Boxing\VS_Python\Search\Minimizing Mission Time\simulation_results\run_2026-05-27_23-01-55\summary_improvement_of_averages_barplot.png'
+===================================================================
+
+
+==================== HEAD-TO-HEAD: BOB-V vs V-Shaped ====================
+Total Runs: 200
+BOB-V Wins:   77 (38.5%)
+BOB-V Losses: 123 (61.5%)
+Draws:          0
+----------------------------------------
+When BOB-V wins, it saves an average of: 6.99 seconds
+When BOB-V loses, it lags by an average of:  10.59 seconds
+=================================================================
+
+Saved Head-to-Head pie chart to: 'C:\Users\Boxing\Desktop\Boxing\VS_Python\Search\Minimizing Mission Time\simulation_results\run_2026-05-27_23-01-55\summary_bob_v_vs_vshaped_pie.png'
+
+==================== HEAD-TO-HEAD: BOB-F vs V-Shaped ====================
+Total Runs: 200
+BOB-F Wins:   200 (100.0%)
+BOB-F Losses: 0 (0.0%)
+Draws:          0
+----------------------------------------
+When BOB-F wins, it saves an average of: 35.04 seconds
+When BOB-F loses, it lags by an average of:  0.00 seconds
+=================================================================
+
+Saved Head-to-Head pie chart to: 'C:\Users\Boxing\Desktop\Boxing\VS_Python\Search\Minimizing Mission Time\simulation_results\run_2026-05-27_23-01-55\summary_bob_f_vs_vshaped_pie.png'
+
+==================== HEAD-TO-HEAD: BOB-F (Anchor) vs BOB-F (Center) ====================
+Total Runs: 200
+BOB-F (Anchor) Wins:   81 (40.5%)
+BOB-F (Anchor) Losses: 116 (58.0%)
+Draws:          3
+----------------------------------------
+When BOB-F (Anchor) wins, it saves an average of: 0.90 seconds
+When BOB-F (Anchor) loses, it lags by an average of:  1.37 seconds
+=================================================================
+
+Saved Head-to-Head pie chart to: 'C:\Users\Boxing\Desktop\Boxing\VS_Python\Search\Minimizing Mission Time\simulation_results\run_2026-05-27_23-01-55\summary_bob_f_anchor_vs_center_pie.png'
+
+Visualizations generation complete.

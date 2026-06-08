@@ -58,7 +58,7 @@ def plot_gn_environment(ax: plt.Axes, gns: np.ndarray, data_center_pos: Tuple[fl
             
     ax.set_xlabel("X-coordinate (meters)")
     ax.set_ylabel("Y-coordinate (meters)")
-    ax.grid(True, linestyle=':', alpha=0.6)
+#    ax.grid(True, linestyle=':', alpha=0.6)
 
 def plot_initial_routes(gns: np.ndarray, data_center_pos: Tuple[float, float],
                         uav_assignments: Dict[str, List[int]], area_width: float,
@@ -69,7 +69,7 @@ def plot_initial_routes(gns: np.ndarray, data_center_pos: Tuple[float, float],
         if not route_indices: continue
         color = UAV_COLORS[i % len(UAV_COLORS)]
         path_coords = np.array([data_center_pos] + [gns[idx] for idx in route_indices] + [data_center_pos])
-        ax.plot(path_coords[:, 0], path_coords[:, 1], color=color, linestyle='--', marker='.', markersize=8, label=f'{uav_id} Path')
+        ax.plot(path_coords[:, 0], path_coords[:, 1], color=color, linestyle='--', marker='.', markersize=8, label=f'Initial Path')
         for j in range(len(path_coords) - 1):
             _add_arrow_to_line(ax, path_coords[j], path_coords[j+1], color)
     ax.set_title(title)
@@ -91,23 +91,23 @@ def plot_final_comparison_trajectories(gns: np.ndarray, data_center_pos: Tuple[f
                                        bob_f_center_trajectories: Dict[str, List[Dict]],
                                        cmc_plot_points: Dict[str, Dict],
                                        area_width: float, area_height: float, comm_radius: float,
-                                       save_path: str = None, title: str = "Final Optimized Trajectories Comparison"):
+                                       save_path: str = None, title: str = "Final Trajectories Comparison"):
     fig, ax = plt.subplots(figsize=(14, 14))
     plot_gn_environment(ax, gns, data_center_pos, area_width, area_height, comm_radius)
     
     for i, (uav_id, segments) in enumerate(v_shaped_trajectories.items()):
-        color = UAV_COLORS[i % len(UAV_COLORS)] # Default to Red usually
-        ax.plot([], [], color=color, linestyle='-', linewidth=2.0, label=f'{uav_id} V-Shaped (Time-Optimal)')
+        color = 'green'
+        ax.plot([], [], color=color, linestyle='--', linewidth=2.0, label=f'V-Shaped')
         sequence_counter = 1
         for segment in segments:
             if segment['type'] == 'flight':
                 start, end = np.array(segment['start']), np.array(segment['end'])
-                ax.plot([start[0], end[0]], [start[1], end[1]], color=color, linestyle='-', linewidth=1.5, zorder=2)
-                _add_arrow_to_line(ax, start, end, color)
+                ax.plot([start[0], end[0]], [start[1], end[1]], color=color, linestyle='--', linewidth=1.5, zorder=2)
+#                _add_arrow_to_line(ax, start, end, color)
             elif segment['type'] == 'collection':
                 fip, oh, fop = np.array(segment['fip']), np.array(segment['oh']), np.array(segment['fop'])
                 v_path = np.array([fip, oh, fop])
-                ax.plot(v_path[:, 0], v_path[:, 1], color=color, linestyle='-', linewidth=1.5, marker='.', markersize=4, zorder=2)
+                ax.plot(v_path[:, 0], v_path[:, 1], color=color, linestyle='--', linewidth=1.5, marker='.', markersize=4, zorder=2)
 #                ax.text(oh[0] + 50, oh[1] + 50, str(sequence_counter), color='white', 
 #                        fontsize=10, fontweight='bold', ha='center', va='center',
 #                        bbox=dict(facecolor=color, alpha=0.8, boxstyle='circle,pad=0.2'))
@@ -121,7 +121,7 @@ def plot_final_comparison_trajectories(gns: np.ndarray, data_center_pos: Tuple[f
         color = 'darkblue' if i==0 else 'darkgreen'
         if len(path) > 0:
             ax.plot(path[:, 0], path[:, 1], color=color, linestyle=':', linewidth=2.0, 
-                    label=f'{uav_id} Convex (Shortest Path)')
+                    label=f'Convex')
 
             # so_points = path[1:-1:2]
             # eo_points = path[2:-1:2]
@@ -156,8 +156,8 @@ def plot_final_comparison_trajectories(gns: np.ndarray, data_center_pos: Tuple[f
     """
     
     for i, (uav_id, segments) in enumerate(bob_f_trajectories.items()):
-        color = 'magenta' 
-        ax.plot([], [], color=color, linestyle='--', linewidth=2.0, label=f'{uav_id} BOB-F (Overlap)')
+        color = 'red' 
+        ax.plot([], [], color=color, linestyle='-', linewidth=2.0, label=f'RPA-BO')
 
         if not segments: continue
         previous_pos = data_center_pos
@@ -165,13 +165,14 @@ def plot_final_comparison_trajectories(gns: np.ndarray, data_center_pos: Tuple[f
             fip, oh, fop = np.array(segment['fip']), np.array(segment['oh']), np.array(segment['fop'])
             
             if np.linalg.norm(fip - previous_pos) > 1e-6:
-                ax.plot([previous_pos[0], fip[0]], [previous_pos[1], fip[1]], color=color, linestyle='--', linewidth=1.5, zorder=2)
+                ax.plot([previous_pos[0], fip[0]], [previous_pos[1], fip[1]], color=color, linestyle='-', linewidth=1.5, zorder=2)
+                _add_arrow_to_line(ax, previous_pos, fip, color)
             
             v_path = np.array([fip, oh, fop])
-            ax.plot(v_path[:, 0], v_path[:, 1], color=color, linestyle='--', linewidth=1.5, marker='.', markersize=4, zorder=2)
+            ax.plot(v_path[:, 0], v_path[:, 1], color=color, linestyle='-', linewidth=1.5, marker='.', markersize=4, zorder=2)
             previous_pos = fop 
         
-        ax.plot([previous_pos[0], data_center_pos[0]], [previous_pos[1], data_center_pos[1]], color=color, linestyle='--', linewidth=1.5, zorder=2)
+        ax.plot([previous_pos[0], data_center_pos[0]], [previous_pos[1], data_center_pos[1]], color=color, linestyle='-', linewidth=1.5, zorder=2)
     
 #    for i, (uav_id, segments) in enumerate(bob_f_center_trajectories.items()):
 #        color = 'green' 
@@ -269,7 +270,7 @@ def plot_convex_path_details(gns: np.ndarray, data_center_pos: Tuple[float, floa
         if len(path_np) > 0:
             # Plot the full path
             ax.plot(path_np[:, 0], path_np[:, 1], color=color, linestyle='--', linewidth=1.5,
-                    label=f'{uav_id} Convex Path')
+                    label=f'Convex Path')
             
             # Highlight So and Eo points
             # Path structure is [DC, So_0, Eo_0, So_1, Eo_1, ..., So_N-1, Eo_N-1, DC]
@@ -314,7 +315,7 @@ def plot_performance_curve(x_data: Dict[str, List], y_data: Dict[str, List],
     ax.set_xlabel(x_label)
     ax.set_ylabel(y_label)
     ax.set_title(title)
-    ax.grid(True, linestyle=':', alpha=0.7)
+#    ax.grid(True, linestyle=':', alpha=0.7)
     ax.legend()
     plt.tight_layout()
     plt.show()
