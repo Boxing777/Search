@@ -96,7 +96,7 @@ class CMCPlanner:
         t = np.clip(t, 0, 1)
         return p1 + t * d
 
-    def estimate_mission_time(self, ordered_gn_indices: List[int], required_data_per_gn: float) -> Dict:
+    def estimate_mission_time(self, ordered_gn_indices: List[int], data_reqs: Dict[int, float]) -> Dict:
         """
         Estimates mission time using the CMC method.
         """
@@ -276,6 +276,7 @@ class CMCPlanner:
         for gn_index in ordered_gn_indices:
             gn_coord = gns_coords[gn_index]
             data_collected_on_segment = 0
+            req_data_i = data_reqs[gn_index]
             
             segments_for_gn = collection_periods[gn_index]
             
@@ -322,7 +323,7 @@ class CMCPlanner:
                 })
             
             hover_time_for_gn = 0
-            data_shortfall = required_data_per_gn - data_collected_on_segment
+            data_shortfall = req_data_i  - data_collected_on_segment
             
             if data_shortfall > 1e-6: # Use epsilon for float zero check
                 # Find best hover point (closest to GN) on the valid service segments

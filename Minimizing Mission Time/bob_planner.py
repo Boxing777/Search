@@ -69,7 +69,7 @@ class BOBPlanner:
         t = np.clip(t, 0, 1)
         return p1 + t * d
 
-    def plan_path(self, ordered_gn_indices: List[int], required_data_per_gn: float) -> Dict:
+    def plan_path(self, ordered_gn_indices: List[int], data_reqs: Dict[int, float]) -> Dict:
         """
         Plans the BOB-V trajectory for a given, fixed sequence of GNs.
         """
@@ -124,6 +124,8 @@ class BOBPlanner:
         for i, gn_index in enumerate(ordered_gn_indices):
             current_gn_coord = self.all_gns[gn_index]
             
+            req_data_i = data_reqs[gn_index]
+            
             # Determine the target anchor for the t_flight_out calculation
             is_last_gn = (i == len(ordered_gn_indices) - 1)
             if is_last_gn:
@@ -150,14 +152,14 @@ class BOBPlanner:
                 for fop in fop_candidates:
                     c_max = self.traj_optimizer.calculate_fm_max_capacity(fip, fop, current_gn_coord)
                     
-                    if required_data_per_gn <= c_max:
+                    if req_data_i <= c_max:
                         optimal_oh, t_collect_theoretical = self.traj_optimizer.find_optimal_fm_trajectory(
-                            fip, fop, current_gn_coord, required_data_per_gn, is_overlapping=is_overlapping
+                            fip, fop, current_gn_coord, req_data_i, is_overlapping=is_overlapping
                         )
                     else:
                         optimal_oh = current_gn_coord
                         collection_flight_time = (np.linalg.norm(fip - optimal_oh) + np.linalg.norm(fop - optimal_oh)) / self.uav_speed
-                        hover_time = (required_data_per_gn - c_max) / self.traj_optimizer.hover_datarate
+                        hover_time = (req_data_i - c_max) / self.traj_optimizer.hover_datarate
                         t_collect_theoretical = collection_flight_time + hover_time
                     
                     physical_dist = np.linalg.norm(optimal_oh - fip) + np.linalg.norm(fop - optimal_oh)

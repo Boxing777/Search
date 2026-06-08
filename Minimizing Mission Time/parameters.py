@@ -134,3 +134,7 @@ JOFC_GRID_STEP_SIZE = 30.0 # meters
 # The number of discrete steps 'K' to approximate the integral for calculating
 # total collected data (Appendix C, equation 19).
 NUMERICAL_INTEGRATION_STEPS = 200 # integer
+
+# The data requirement for each GN will be uniformly sampled between MIN and MAX
+DATA_REQ_MIN_MBITS = 8.0  # Minimum data requirement in Mbits
+DATA_REQ_MAX_MBITS = 141.0  # Maximum data requirement in Mbits

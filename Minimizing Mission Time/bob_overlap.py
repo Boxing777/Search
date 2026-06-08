@@ -118,7 +118,7 @@ class BOBOverlapPlanner:
         return candidates
 
     # --- Main Planning Logic ---
-    def plan_path(self, ordered_gn_indices: List[int], required_data_per_gn: float) -> Dict:
+    def plan_path(self, ordered_gn_indices: List[int], data_reqs: Dict[int, float]) -> Dict:
         if not ordered_gn_indices:
             return {"segments": [], "total_time": 0.0, "total_length": 0.0}
 
@@ -250,6 +250,8 @@ class BOBOverlapPlanner:
                             gn_idx = group[l - 2]
                             gn_coord = self.all_gns[gn_idx]
                             
+                            req_data_i = data_reqs[gn_idx]
+                            
                             dist_prev = np.linalg.norm(p_prev - gn_coord)
                             dist_curr = np.linalg.norm(p_curr - gn_coord)
                             
@@ -257,13 +259,13 @@ class BOBOverlapPlanner:
                                                          np.isclose(dist_curr, self.comm_radius, atol=1e-2))
                             
                             c_max = self.traj_optimizer.calculate_fm_max_capacity(p_prev, p_curr, gn_coord)
-                            if required_data_per_gn <= c_max:
+                            if req_data_i <= c_max:
                                 opt_oh, t_col_theo = self.traj_optimizer.find_optimal_fm_trajectory(
-                                    p_prev, p_curr, gn_coord, required_data_per_gn, is_overlapping=use_elliptical_solver)
+                                    p_prev, p_curr, gn_coord, req_data_i, is_overlapping=use_elliptical_solver)
                             else:
                                 opt_oh = gn_coord
                                 t_flight = (np.linalg.norm(p_prev - opt_oh) + np.linalg.norm(p_curr - opt_oh)) / self.uav_speed
-                                t_hover = (required_data_per_gn - c_max) / self.traj_optimizer.hover_datarate
+                                t_hover = (req_data_i - c_max) / self.traj_optimizer.hover_datarate
                                 t_col_theo = t_flight + t_hover
                             
                             phy_dist = np.linalg.norm(opt_oh - p_prev) + np.linalg.norm(p_curr - opt_oh)

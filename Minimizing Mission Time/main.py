@@ -105,8 +105,14 @@ def run_single_simulation(run_prefix: str, output_dir: str):
     
     print(f"Environment created: {params.AREA_WIDTH}x{params.AREA_HEIGHT}m area with {params.NUM_GNS} GNs.")
 
-    required_data_per_gn =  8 * 1e6 # Set to a high value to see V-shapes data size
-    print(f"Data requirement per GN set to {required_data_per_gn / 1e6:.0f} Mbits.")
+#    required_data_per_gn =  8 * 1e6 # Set to a high value to see V-shapes data size
+#    print(f"Data requirement per GN set to {required_data_per_gn / 1e6:.0f} Mbits.")
+    gn_data_reqs = {}
+    for i in range(params.NUM_GNS):
+        random_mbits = np.random.uniform(params.DATA_REQ_MIN_MBITS, params.DATA_REQ_MAX_MBITS)
+        gn_data_reqs[i] = random_mbits * 1e6 # Convert to bits
+        
+    print(f"Data requirements randomized between {params.DATA_REQ_MIN_MBITS} and {params.DATA_REQ_MAX_MBITS} Mbits.")
     
     print("\n[Step 2/5] Running Mission Allocation (Genetic Algorithm)...")
     ga_solver = MissionAllocationGA(
@@ -183,6 +189,7 @@ def run_single_simulation(run_prefix: str, output_dir: str):
         for i, gn_index in enumerate(gn_indices_route):
             sp = previous_fop
             current_gn_coord = sim_env.gn_positions[gn_index]
+            current_req_data = gn_data_reqs[gn_index]
             
             is_last_gn = (i == len(gn_indices_route) - 1)
             next_target_anchor = sim_env.data_center_pos if is_last_gn else sim_env.gn_positions[gn_indices_route[i+1]]
@@ -217,15 +224,15 @@ def run_single_simulation(run_prefix: str, output_dir: str):
                     c_max = traj_optimizer.calculate_fm_max_capacity(fip, fop, current_gn_coord)
                     
                     # Determine collection mode (FM or HM) and calculate theoretical collection time
-                    if required_data_per_gn <= c_max:
+                    if current_req_data  <= c_max:
                         # FM Mode
                         optimal_oh, collection_time_theoretical = traj_optimizer.find_optimal_fm_trajectory(
-                            fip, fop, current_gn_coord, required_data_per_gn, is_overlapping=is_overlapping)
+                            fip, fop, current_gn_coord, current_req_data , is_overlapping=is_overlapping)
                     else:
                         # HM Mode
                         optimal_oh = current_gn_coord
                         collection_flight_time = (np.linalg.norm(fip - optimal_oh) + np.linalg.norm(optimal_oh - fop)) / params.UAV_MAX_SPEED
-                        hover_time = (required_data_per_gn - c_max) / traj_optimizer.hover_datarate if traj_optimizer.hover_datarate > 0 else float('inf')
+                        hover_time = (current_req_data  - c_max) / traj_optimizer.hover_datarate if traj_optimizer.hover_datarate > 0 else float('inf')
                         collection_time_theoretical = collection_flight_time + hover_time
 
                     # +++ KEY CORRECTION: APPLY PHYSICAL TIME CONSTRAINT +++
@@ -252,7 +259,7 @@ def run_single_simulation(run_prefix: str, output_dir: str):
                 print(f"WARNING: Fallback for GN {gn_index}.")
                 oh = current_gn_coord
                 flight_time_in = np.linalg.norm(sp - oh) / params.UAV_MAX_SPEED
-                hover_time = required_data_per_gn / traj_optimizer.hover_datarate
+                hover_time = current_req_data  / traj_optimizer.hover_datarate
                 best_leg_config = {'fip': oh, 'fop': oh, 'oh': oh, 
                                    'flight_time_in': flight_time_in, 'collection_time': hover_time}
 
@@ -298,7 +305,7 @@ def run_single_simulation(run_prefix: str, output_dir: str):
             )
             
             # Determine if hovering is needed
-            data_shortfall = required_data_per_gn - data_collected_on_segment
+            data_shortfall = current_req_data  - data_collected_on_segment
             
             collection_flight_time = np.linalg.norm(segment['end'] - segment['start']) / params.UAV_MAX_SPEED
             hover_time = 0.0
@@ -323,7 +330,7 @@ def run_single_simulation(run_prefix: str, output_dir: str):
         print(f"     Convex Path -> Flight Time: {convex_flight_time:.2f}s, Required Hover Time: {convex_total_hover_time:.2f}s, TOTAL FAIR TIME: {convex_actual_mission_time:.2f}s")
 
         print("\n  -> Running BOB Planner for the same sequence...")
-        bob_result = bob_planner.plan_path(gn_indices_route, required_data_per_gn)
+        bob_result = bob_planner.plan_path(gn_indices_route, gn_data_reqs )
 
         
         bob_mission_times[uav_id] = bob_result['total_time']
@@ -333,7 +340,7 @@ def run_single_simulation(run_prefix: str, output_dir: str):
         print(f"     BOB Mission Time: {bob_result['total_time']:.2f}s | Path Length: {bob_result['total_length']:.2f}m")
         
         print("\n  -> Running BOB-F (Overlap) Planner for the same sequence...")
-        bob_f_result = bob_overlap_planner.plan_path(gn_indices_route, required_data_per_gn)
+        bob_f_result = bob_overlap_planner.plan_path(gn_indices_route, gn_data_reqs )
         
         bob_f_mission_times[uav_id] = bob_f_result['total_time']
         bob_f_path_lengths[uav_id] = bob_f_result['total_length']
@@ -343,7 +350,7 @@ def run_single_simulation(run_prefix: str, output_dir: str):
         
         
         print("\n  -> Running BOB-F_center Planner for the same sequence...")
-        bob_f_center_result = bob_overlap_center_planner.plan_path(gn_indices_route, required_data_per_gn)
+        bob_f_center_result = bob_overlap_center_planner.plan_path(gn_indices_route, gn_data_reqs )
         
         bob_f_center_mission_times[uav_id] = bob_f_center_result['total_time']
         bob_f_center_path_lengths[uav_id] = bob_f_center_result['total_length']
@@ -353,7 +360,7 @@ def run_single_simulation(run_prefix: str, output_dir: str):
 
         print("\n  -> Running CMC Planner for the same sequence...")
         
-        cmc_result = cmc_planner.estimate_mission_time(gn_indices_route, required_data_per_gn)
+        cmc_result = cmc_planner.estimate_mission_time(gn_indices_route, gn_data_reqs )
         cmc_mission_times[uav_id] = cmc_result['total_time']
         cmc_plot_points[uav_id] = cmc_result['plot_points']
         
