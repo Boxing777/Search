@@ -62,9 +62,9 @@ def plot_gn_environment(ax: plt.Axes, gns: np.ndarray, data_center_pos: Tuple[fl
 
 def plot_initial_routes(gns: np.ndarray, data_center_pos: Tuple[float, float],
                         uav_assignments: Dict[str, List[int]], area_width: float,
-                        area_height: float, save_path: str = None, title: str = "Initial UAV Routes (MTSP Solution)"):
+                        area_height: float, comm_radius: float = 0.0, save_path: str = None, title: str = "Initial UAV Routes (MTSP Solution)"):
     fig, ax = plt.subplots(figsize=(12, 12))
-    plot_gn_environment(ax, gns, data_center_pos, area_width, area_height)
+    plot_gn_environment(ax, gns, data_center_pos, area_width, area_height, comm_radius=comm_radius)
     for i, (uav_id, route_indices) in enumerate(uav_assignments.items()):
         if not route_indices: continue
         color = UAV_COLORS[i % len(UAV_COLORS)]

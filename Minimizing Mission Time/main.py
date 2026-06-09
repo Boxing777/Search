@@ -117,7 +117,7 @@ def run_single_simulation(run_prefix: str, output_dir: str):
     
     vis.plot_initial_routes(
         gns=sim_env.gn_positions, data_center_pos=sim_env.data_center_pos, uav_assignments=initial_assignment,
-        area_width=params.AREA_WIDTH, area_height=params.AREA_HEIGHT,
+        area_width=params.AREA_WIDTH, area_height=params.AREA_HEIGHT, comm_radius=comm_radius,
         save_path=os.path.join(output_dir, f'{run_prefix}_initial_routes.png')
     )
     
