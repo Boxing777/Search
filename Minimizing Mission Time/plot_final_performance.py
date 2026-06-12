@@ -54,7 +54,7 @@ def parse_summary_file(file_path: str) -> dict:
 
 def generate_performance_curves():
     data_dir = "final_simulation"
-    data_loads_mb = [1, 2, 4, 8, 16, 32]
+    data_loads_mb = [1, 2, 4, 8, 16]
     
     # Storage for parsed metrics
     mct_data = {'Convex': [], 'V-Shaped': [], 'BOB-F': []}
@@ -109,7 +109,7 @@ def generate_performance_curves():
     ax1.set_xscale('log', base=2) # Using log-scale for binary-increasing data loads
     ax1.set_xticks(data_loads_mb)
     ax1.get_xaxis().set_major_formatter(plt.ScalarFormatter())
-    ax1.grid(True, which="both", linestyle=':', alpha=0.5)
+ #   ax1.grid(True, which="both", linestyle=':', alpha=0.5)
     
     # Place the legend outside the axes bounding box on the upper right
     ax1.legend(bbox_to_anchor=(1.05, 1.0), loc='upper left', borderaxespad=0.0, fontsize='medium')
@@ -135,7 +135,7 @@ def generate_performance_curves():
     ax2.set_xscale('log', base=2)
     ax2.set_xticks(data_loads_mb)
     ax2.get_xaxis().set_major_formatter(plt.ScalarFormatter())
-    ax2.grid(True, which="both", linestyle=':', alpha=0.5)
+ #   ax2.grid(True, which="both", linestyle=':', alpha=0.5)
     
     # Place the legend outside the axes bounding box on the upper right
     ax2.legend(bbox_to_anchor=(1.05, 1.0), loc='upper left', borderaxespad=0.0, fontsize='medium')
