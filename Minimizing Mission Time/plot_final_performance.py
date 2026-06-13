@@ -107,9 +107,15 @@ def generate_performance_curves():
     ax1.set_xlabel("Data Requirement per GN (MB)", fontsize=12, fontweight='bold')
     ax1.set_ylabel("Average Mission Completion Time (s)", fontsize=12, fontweight='bold')
     ax1.set_xscale('log', base=2) # Using log-scale for binary-increasing data loads
+    
+    # <<<--- [NEW] Adjust X-axis to fill the entire plot area & Y-axis start point ---<<<
+    ax1.set_xlim(min(data_loads_mb), max(data_loads_mb)) # Exact snap to [1, 16]
+    ax1.set_ylim(250, 950) # Set strict Y limits
+    ax1.set_yticks([250, 350, 450, 550, 650, 750, 850, 950]) # Force explicit y-ticks from bottom
+    # >>>------------------------------------------------------------------------>>>
+    
     ax1.set_xticks(data_loads_mb)
     ax1.get_xaxis().set_major_formatter(plt.ScalarFormatter())
- #   ax1.grid(True, which="both", linestyle=':', alpha=0.5)
     
     # Place the legend outside the axes bounding box on the upper right
     ax1.legend(bbox_to_anchor=(1.05, 1.0), loc='upper left', borderaxespad=0.0, fontsize='medium')
@@ -133,9 +139,15 @@ def generate_performance_curves():
     ax2.set_xlabel("Data Requirement per GN (MB)", fontsize=12, fontweight='bold')
     ax2.set_ylabel("Average Flight Path Distance (meters)", fontsize=12, fontweight='bold')
     ax2.set_xscale('log', base=2)
+    
+    # <<<--- [NEW] Adjust X-axis to fill the entire plot area & Y-axis start point ---<<<
+    ax2.set_xlim(min(data_loads_mb), max(data_loads_mb)) # Exact snap to [1, 16]
+    ax2.set_ylim(4500, 8500) # Set strict Y limits
+    ax2.set_yticks([4500, 5000, 5500, 6000, 6500, 7000, 7500, 8000, 8500]) # Force explicit y-ticks from bottom
+    # >>>------------------------------------------------------------------------>>>
+    
     ax2.set_xticks(data_loads_mb)
     ax2.get_xaxis().set_major_formatter(plt.ScalarFormatter())
- #   ax2.grid(True, which="both", linestyle=':', alpha=0.5)
     
     # Place the legend outside the axes bounding box on the upper right
     ax2.legend(bbox_to_anchor=(1.05, 1.0), loc='upper left', borderaxespad=0.0, fontsize='medium')
