@@ -100,7 +100,7 @@ def analyze_batch_results(batch_dir):
     ax_time.set_yticks(np.arange(start_tick_time, end_tick_time + tick_step_time, tick_step_time))
 
     plt.title('Mission Completion Time (MCT) Distribution', fontsize=16)
-    plt.ylabel('Time (seconds)', fontsize=12); plt.grid(True, linestyle=':', alpha=0.6)
+    plt.ylabel('Time (seconds)', fontsize=12);# plt.grid(True, linestyle=':', alpha=0.6)
     legend_elements_time = [Line2D([0], [0], color='cyan', lw=2, label='Mean', linestyle='--')]
     ax_time.legend(handles=legend_elements_time)
     save_path_mct = os.path.join(batch_dir, 'summary_mct_boxplot.png'); plt.savefig(save_path_mct)
@@ -124,7 +124,7 @@ def analyze_batch_results(batch_dir):
     ax_len.set_yticks(np.arange(start_tick_len, end_tick_len + tick_step_len, tick_step_len))
 
     plt.title('Total Path Length Distribution', fontsize=16)
-    plt.ylabel('Distance (meters)', fontsize=12); plt.grid(True, linestyle=':', alpha=0.6)
+    plt.ylabel('Distance (meters)', fontsize=12);# plt.grid(True, linestyle=':', alpha=0.6)
     legend_elements_len = [Line2D([0], [0], color='cyan', lw=2, label='Mean', linestyle='--')]
     ax_len.legend(handles=legend_elements_len)
     save_path_len = os.path.join(batch_dir, 'summary_length_boxplot.png'); plt.savefig(save_path_len)

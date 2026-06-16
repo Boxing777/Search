@@ -54,7 +54,7 @@ def parse_summary_file(file_path: str) -> dict:
 
 def generate_performance_curves():
     data_dir = "final_simulation"
-    data_loads_mb = [1, 2, 4, 8, 16]
+    data_loads_mb = [1, 2, 4, 8, 16, 32]
     
     # Storage for parsed metrics
     mct_data = {'Convex': [], 'V-Shaped': [], 'BOB-F': []}
@@ -110,8 +110,11 @@ def generate_performance_curves():
     
     # <<<--- [NEW] Adjust X-axis to fill the entire plot area & Y-axis start point ---<<<
     ax1.set_xlim(min(data_loads_mb), max(data_loads_mb)) # Exact snap to [1, 16]
-    ax1.set_ylim(250, 950) # Set strict Y limits
-    ax1.set_yticks([250, 350, 450, 550, 650, 750, 850, 950]) # Force explicit y-ticks from bottom
+    max_mct = max(max(mct_data['Convex']), max(mct_data['V-Shaped']), max(mct_data['BOB-F']))
+    upper_bound_mct = max_mct * 1.05
+    ax1.set_ylim(250, upper_bound_mct) 
+    ax1.set_yticks(np.arange(250, upper_bound_mct, 200))
+    
     # >>>------------------------------------------------------------------------>>>
     
     ax1.set_xticks(data_loads_mb)
@@ -142,8 +145,11 @@ def generate_performance_curves():
     
     # <<<--- [NEW] Adjust X-axis to fill the entire plot area & Y-axis start point ---<<<
     ax2.set_xlim(min(data_loads_mb), max(data_loads_mb)) # Exact snap to [1, 16]
-    ax2.set_ylim(4500, 8500) # Set strict Y limits
-    ax2.set_yticks([4500, 5000, 5500, 6000, 6500, 7000, 7500, 8000, 8500]) # Force explicit y-ticks from bottom
+    max_len = max(max(length_data['Convex']), max(length_data['V-Shaped']), max(length_data['BOB-F']))
+    upper_bound_len = max_len * 1.05
+    ax2.set_ylim(4500, upper_bound_len) 
+    ax2.set_yticks(np.arange(4500, upper_bound_len, 500))
+    
     # >>>------------------------------------------------------------------------>>>
     
     ax2.set_xticks(data_loads_mb)
