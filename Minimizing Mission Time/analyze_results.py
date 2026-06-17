@@ -78,7 +78,8 @@ def analyze_batch_results(batch_dir):
     print("="*63 + "\n")
     
     # <<< MODIFIED: Methods list now includes BOB_V and BOB_F >>>
-    methods = ['V_Shaped', 'Convex', 'CMC', 'BOB_V', 'BOB_F', 'BOB_F_Center']
+    methods = ['V_Shaped', 'Convex', 'BOB_F'] 
+#    methods = ['V_Shaped', 'Convex', 'CMC', 'BOB_V', 'BOB_F', 'BOB_F_Center']
     
     # ---------------------------------------------------------
     # 1. Boxplots (Time & Length)
@@ -94,7 +95,7 @@ def analyze_batch_results(batch_dir):
         ax_time.text(i, mean_val + vertical_offset_time, f'{mean_val:.2f}', horizontalalignment='center', size='medium', color='black', weight='semibold')
 
     min_val_time, max_val_time = time_df.min().min(), time_df.max().max()
-    tick_step_time = 20 # Time step of 20 seconds
+    tick_step_time = 50 # Time step of 20 seconds
     start_tick_time = np.floor(min_val_time / tick_step_time) * tick_step_time
     end_tick_time = np.ceil(max_val_time / tick_step_time) * tick_step_time
     ax_time.set_yticks(np.arange(start_tick_time, end_tick_time + tick_step_time, tick_step_time))
@@ -135,7 +136,8 @@ def analyze_batch_results(batch_dir):
     # 2. Improvement Barplots
     # ---------------------------------------------------------
     baseline_method = 'Convex'
-    comparison_methods = ['V_Shaped', 'CMC', 'BOB_V', 'BOB_F', 'BOB_F_Center']
+    comparison_methods = ['V_Shaped', 'BOB_F']
+#    comparison_methods = ['V_Shaped', 'CMC', 'BOB_V', 'BOB_F', 'BOB_F_Center']
     
     # --- Local Averages ---
     avg_improvements = {}
