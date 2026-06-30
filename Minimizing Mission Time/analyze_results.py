@@ -80,11 +80,19 @@ def analyze_batch_results(batch_dir):
     # <<< MODIFIED: Methods list now includes BOB_V and BOB_F >>>
     methods = ['V_Shaped', 'Convex', 'BOB_F'] 
 #    methods = ['V_Shaped', 'Convex', 'CMC', 'BOB_V', 'BOB_F', 'BOB_F_Center']
+
+    display_names = {
+        'V_Shaped': 'V-Shaped',
+        'Convex': 'Convex',
+        'BOB_F': 'RPA-BO'
+    }
     
     # ---------------------------------------------------------
     # 1. Boxplots (Time & Length)
     # ---------------------------------------------------------
-    time_df = df[[f'{m}_Time' for m in methods]]; time_df.columns = [m.replace('_', '-') for m in methods]
+#    time_df = df[[f'{m}_Time' for m in methods]]; time_df.columns = [m.replace('_', '-') for m in methods]
+    time_df = df[[f'{m}_Time' for m in methods]]
+    time_df.columns = [display_names.get(m, m.replace('_', '-')) for m in methods]
     plt.figure(figsize=(12, 8))
     ax_time = sns.boxplot(data=time_df, showmeans=True, meanline=True, meanprops={'color': 'cyan', 'linestyle': '--', 'linewidth': 2})
     
@@ -108,7 +116,10 @@ def analyze_batch_results(batch_dir):
     print(f"Saved enhanced MCT boxplot to: '{save_path_mct}'")
     plt.close() # Close figure to free memory
     
-    length_df = df[[f'{m}_Length' for m in methods]]; length_df.columns = [m.replace('_', '-') for m in methods]
+ #   length_df = df[[f'{m}_Length' for m in methods]]; length_df.columns = [m.replace('_', '-') for m in methods]
+    length_df = df[[f'{m}_Length' for m in methods]]
+    length_df.columns = [display_names.get(m, m.replace('_', '-')) for m in methods]
+    
     plt.figure(figsize=(12, 8))
     ax_len = sns.boxplot(data=length_df, showmeans=True, meanline=True, meanprops={'color': 'cyan', 'linestyle': '--', 'linewidth': 2})
     
@@ -143,7 +154,9 @@ def analyze_batch_results(batch_dir):
     avg_improvements = {}
     for method in comparison_methods:
         df[f'{method}_Improvement'] = (df[f'{baseline_method}_Time'] - df[f'{method}_Time']) / df[f'{baseline_method}_Time'] * 100
-        avg_improvements[method.replace('_', '-')] = df[f'{method}_Improvement'].mean()
+    #    avg_improvements[method.replace('_', '-')] = df[f'{method}_Improvement'].mean()
+        disp_name = display_names.get(method, method.replace('_', '-'))
+        avg_improvements[disp_name] = df[f'{method}_Improvement'].mean()
     improvement_df = pd.DataFrame(list(avg_improvements.items()), columns=['Method', 'Average Improvement (%)'])
     
     plt.figure(figsize=(10, 6)); barplot = sns.barplot(x='Method', y='Average Improvement (%)', data=improvement_df)
@@ -163,8 +176,12 @@ def analyze_batch_results(batch_dir):
     for method in comparison_methods:
         method_mean_time = df[f'{method}_Time'].mean()
         imp_percent = (baseline_mean_time - method_mean_time) / baseline_mean_time * 100
-        global_improvement_data.append({'Method': method.replace('_', '-'), 'Improvement of Averages (%)': imp_percent})
-        print(f"{method.replace('_', '-')} Average: {method_mean_time:.2f}s -> Improvement: {imp_percent:.2f}%")
+        disp_name = display_names.get(method, method.replace('_', '-'))
+        
+    #    global_improvement_data.append({'Method': method.replace('_', '-'), 'Improvement of Averages (%)': imp_percent})
+    #    print(f"{method.replace('_', '-')} Average: {method_mean_time:.2f}s -> Improvement: {imp_percent:.2f}%")
+        global_improvement_data.append({'Method': disp_name, 'Improvement of Averages (%)': imp_percent})
+        print(f"{disp_name} Average: {method_mean_time:.2f}s -> Improvement: {imp_percent:.2f}%")
         
     df_global_imp = pd.DataFrame(global_improvement_data)
     plt.figure(figsize=(10, 6))
@@ -239,9 +256,11 @@ def analyze_batch_results(batch_dir):
     generate_h2h_pie_chart(df, 'BOB_V', 'V_Shaped', 'BOB-V', 'V-Shaped', 'summary_bob_v_vs_vshaped_pie.png')
     
     # Generate Chart 2: BOB-F vs V-Shaped (New)
-    generate_h2h_pie_chart(df, 'BOB_F', 'V_Shaped', 'BOB-F', 'V-Shaped', 'summary_bob_f_vs_vshaped_pie.png')
+    # generate_h2h_pie_chart(df, 'BOB_F', 'V_Shaped', 'BOB-F', 'V-Shaped', 'summary_bob_f_vs_vshaped_pie.png')
+    generate_h2h_pie_chart(df, 'BOB_F', 'V_Shaped', 'RPA-BO', 'V-Shaped', 'summary_bob_f_vs_vshaped_pie.png')
     
-    generate_h2h_pie_chart(df, 'BOB_F', 'BOB_F_Center', 'BOB-F (Anchor)', 'BOB-F (Center)', 'summary_bob_f_anchor_vs_center_pie.png')
+    # generate_h2h_pie_chart(df, 'BOB_F', 'BOB_F_Center', 'BOB-F (Anchor)', 'BOB-F (Center)', 'summary_bob_f_anchor_vs_center_pie.png')
+    generate_h2h_pie_chart(df, 'BOB_F', 'BOB_F_Center', 'RPA-BO (Anchor)', 'BOB-F (Center)', 'summary_bob_f_anchor_vs_center_pie.png')
 
     print("\nVisualizations generation complete.")
 

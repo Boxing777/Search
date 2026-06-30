@@ -105,7 +105,7 @@ def run_single_simulation(run_prefix: str, output_dir: str):
     
     print(f"Environment created: {params.AREA_WIDTH}x{params.AREA_HEIGHT}m area with {params.NUM_GNS} GNs.")
 
-    required_data_per_gn =  20 * 1e6 # Set to a high value to see V-shapes data size
+    required_data_per_gn =  100 * 1e6 # Set to a high value to see V-shapes data size
     print(f"Data requirement per GN set to {required_data_per_gn / 1e6:.0f} Mbits.")
     
     print("\n[Step 2/5] Running Mission Allocation (Genetic Algorithm)...")
@@ -406,6 +406,64 @@ def run_single_simulation(run_prefix: str, output_dir: str):
     print(f"Total script execution time: {total_execution_time:.2f}s")
     
     print("\n[Step 5/5] Visualizing final combined trajectories...")
+    
+    vis.plot_final_comparison_trajectories(
+        gns=sim_env.gn_positions, data_center_pos=sim_env.data_center_pos,
+        v_shaped_trajectories={}, 
+        convex_trajectories=convex_trajectories, 
+        bob_trajectories={}, 
+        bob_f_trajectories={}, 
+        bob_f_center_trajectories={}, 
+        cmc_plot_points={}, 
+        area_width=params.AREA_WIDTH, area_height=params.AREA_HEIGHT, comm_radius=traj_optimizer.comm_radius_d,
+        save_path=os.path.join(output_dir, f'{run_prefix}_traj_1_convex_only.png'),
+        title="Theoretical Baseline: Convex Shortest Path"
+    )
+    
+    vis.plot_final_comparison_trajectories(
+        gns=sim_env.gn_positions, data_center_pos=sim_env.data_center_pos,
+        v_shaped_trajectories=final_trajectories, 
+        convex_trajectories={},
+        bob_trajectories={}, 
+        bob_f_trajectories={}, 
+        bob_f_center_trajectories={}, 
+        cmc_plot_points={}, 
+        area_width=params.AREA_WIDTH, area_height=params.AREA_HEIGHT, comm_radius=traj_optimizer.comm_radius_d,
+        save_path=os.path.join(output_dir, f'{run_prefix}_traj_1_vshaped_only.png'),
+        title="Baseline: V-Shaped Trajectory (Greedy Approach)"
+    )
+    
+    vis.plot_final_comparison_trajectories(
+        gns=sim_env.gn_positions, data_center_pos=sim_env.data_center_pos,
+        v_shaped_trajectories=final_trajectories, 
+        convex_trajectories=convex_trajectories,
+        bob_trajectories={}, 
+        bob_f_trajectories={}, 
+        bob_f_center_trajectories={}, 
+        cmc_plot_points={}, 
+        area_width=params.AREA_WIDTH, area_height=params.AREA_HEIGHT, comm_radius=traj_optimizer.comm_radius_d,
+        save_path=os.path.join(output_dir, f'{run_prefix}_trajectories_baseline_only.png'), 
+        title="Baseline Trajectories (Convex vs. V-Shaped)" 
+    )
+
+    vis.plot_final_comparison_trajectories(
+        gns=sim_env.gn_positions, data_center_pos=sim_env.data_center_pos,
+        v_shaped_trajectories=final_trajectories, 
+        convex_trajectories=convex_trajectories,
+        bob_trajectories={}, 
+        bob_f_trajectories=bob_f_trajectories, 
+        bob_f_center_trajectories={}, 
+        cmc_plot_points={}, 
+        area_width=params.AREA_WIDTH, area_height=params.AREA_HEIGHT, comm_radius=traj_optimizer.comm_radius_d,
+        save_path=os.path.join(output_dir, f'{run_prefix}_trajectories_with_proposed.png'), 
+        title="Proposed Trajectories Comparison" 
+    )
+    
+    print("\nSimulation finished successfully.")
+    print("======================================================")
+ 
+'''   
+    print("\n[Step 5/5] Visualizing final combined trajectories...")
     vis.plot_final_comparison_trajectories(
         gns=sim_env.gn_positions, data_center_pos=sim_env.data_center_pos,
         v_shaped_trajectories=final_trajectories, convex_trajectories=convex_trajectories,
@@ -419,6 +477,7 @@ def run_single_simulation(run_prefix: str, output_dir: str):
     
     print("\nSimulation finished successfully.")
     print("======================================================")
+'''
 
 
 def run_task(args):
